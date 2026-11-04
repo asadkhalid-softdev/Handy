@@ -18,6 +18,21 @@ test.beforeEach(async ({ page }) => {
         if (entry.event === event) callbacks.get(entry.handler)?.({ payload });
       }
     };
+    const codexStatus = {
+      settings: {
+        feature_enabled: false,
+        listening: false,
+        phrase: "hey codex",
+        shortcut: "Ctrl+Alt+Shift+Space",
+        thread_id: "01a1a777-2733-73c3-999d-c7d0e0f7cfaf",
+      },
+      phase: "disabled",
+      model: null,
+      error: null,
+      delivery: null,
+      pending_text: null,
+      pending_thread: null,
+    };
     const configurations: Record<string, unknown>[] = [];
     const settings = {
       app_language: "en",
@@ -42,6 +57,8 @@ test.beforeEach(async ({ page }) => {
         arch: "x86_64",
         eol: "\r\n",
       },
+      testCodexCheckError: false,
+      testCodexConfigurations: [],
       testVoiceConfigurations: configurations,
       testVoiceEmit: emit,
       testVoiceCalls: calls,
@@ -67,6 +84,31 @@ test.beforeEach(async ({ page }) => {
               handler: Number(args.handler),
             });
             return id;
+          }
+          if (command === "discard_codex_message") {
+            codexStatus.pending_text = null;
+            codexStatus.pending_thread = null;
+            codexStatus.delivery = null;
+            emit("codex-talk-status", structuredClone(codexStatus));
+            return;
+          }
+          if (command === "get_codex_talk_status")
+            return structuredClone(codexStatus);
+          if (command === "check_codex_thread") {
+            if (Reflect.get(window, "testCodexCheckError"))
+              throw "Thread is not accessible";
+            return "thread-selected-model";
+          }
+          if (command === "configure_codex_talk") {
+            Reflect.get(window, "testCodexConfigurations").push(args.config);
+            Object.assign(codexStatus.settings, args.config);
+            codexStatus.phase = codexStatus.settings.feature_enabled
+              ? codexStatus.settings.listening
+                ? "listening"
+                : "paused"
+              : "disabled";
+            emit("codex-talk-status", structuredClone(codexStatus));
+            return;
           }
           if (command === "get_voice_control_status") return { ...status };
           if (
@@ -211,4 +253,97 @@ test("floating settings navigation selects Wake-Talk in the app", async ({
   await expect(
     page.getByRole("heading", { name: "Wake-Talk", exact: true }),
   ).toBeVisible();
+});
+
+test("Codex-Talk validates its destination and keeps its triggers separate", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/");
+  await page.getByText("Codex-Talk", { exact: true }).click();
+  await expect(page.getByLabel("Thread ID")).toHaveValue(
+    "01a1a777-2733-73c3-999d-c7d0e0f7cfaf",
+  );
+  await expect(
+    page.getByText("Accessible · model: thread-selected-model"),
+  ).toBeVisible();
+  await page.getByLabel("Wake word or phrase").fill("computer codex");
+  await page.getByLabel("Dedicated shortcut").fill("Ctrl+Alt+C");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await page.getByRole("switch", { name: "Enable Codex-Talk" }).check();
+  await page
+    .getByRole("button", { name: "Start listening", exact: true })
+    .click();
+  await expect(page.getByLabel("Wake word or phrase")).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Pause listening", exact: true })
+    .click();
+  await expect(page.getByLabel("Wake word or phrase")).toBeEnabled();
+  const data = await page.evaluate(() => ({
+    codex: Reflect.get(window, "testCodexConfigurations"),
+    voice: Reflect.get(window, "testVoiceConfigurations"),
+  }));
+  expect(data.codex.at(-1)).toMatchObject({
+    feature_enabled: true,
+    listening: false,
+    phrase: "computer codex",
+    shortcut: "Ctrl+Alt+C",
+  });
+  expect(data.voice).toHaveLength(0);
+  await page.screenshot({ path: testInfo.outputPath("codex-talk.png") });
+});
+
+test("Codex-Talk blocks enabling when a thread cannot be accessed", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.evaluate(() => Reflect.set(window, "testCodexCheckError", true));
+  await page.getByText("Codex-Talk", { exact: true }).click();
+  await expect(
+    page.getByText("Cannot access thread: Thread is not accessible"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("switch", { name: "Enable Codex-Talk" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Save settings" }),
+  ).toBeDisabled();
+});
+
+test("failed Codex delivery retains the transcript and original destination", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByText("Codex-Talk", { exact: true }).click();
+  await expect(page.getByLabel("Thread ID")).toBeVisible();
+  await page.evaluate(() =>
+    Reflect.get(window, "testVoiceEmit")("codex-talk-status", {
+      settings: {
+        feature_enabled: true,
+        listening: false,
+        phrase: "hey codex",
+        shortcut: "Ctrl+Alt+Shift+Space",
+        thread_id: "01a1a777-2733-73c3-999d-c7d0e0f7cfaf",
+      },
+      phase: "paused",
+      model: "thread-selected-model",
+      error: "Delivery timed out",
+      delivery: "failed",
+      pending_text: "Please check the build",
+      pending_thread: "original-thread",
+    }),
+  );
+  await expect(
+    page.getByText("Please check the build", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("original-thread", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Retry delivery" }).click();
+  expect(
+    await page.evaluate(() => Reflect.get(window, "testVoiceCalls")),
+  ).toContain("retry_codex_message");
+  await page.getByRole("button", { name: "Discard retained message" }).click();
+  await expect(
+    page.getByText("Please check the build", { exact: true }),
+  ).toHaveCount(0);
 });

@@ -124,3 +124,39 @@ The script verifies the authenticated account and fork parent before changing
 remotes or pushing the current main or feature branch. It never pushes to cjpais/Handy
 and does not open a pull request. Upstream currently has a feature freeze; a
 future upstream proposal must follow its contribution and discussion requirements.
+
+## Codex-Talk
+
+The separate **Codex-Talk** tab sends local transcriptions to Windows Codex
+desktop, without pasting into the focused application. It defaults to thread
+`01a1a777-2733-73c3-999d-c7d0e0f7cfaf`, wake phrase **hey codex**, and shortcut
+**Ctrl+Alt+Shift+Space**. The feature starts disabled. Open your destination
+thread in Windows Codex desktop, check its accessibility in Handy, then enable
+Codex-Talk. Editing a thread ID automatically checks it; **Check again** refreshes
+that result. The displayed model is the thread's current selection. Delivery
+inherits its model, reasoning settings, permissions and workspace.
+
+Play/Pause controls Codex wake listening. The dedicated shortcut works while
+Codex-Talk is enabled, even with wake listening paused. Press it to begin and
+press again or stop speaking to send. Pause cancels a Codex-owned take; disabling
+Codex-Talk also unregisters its shortcut. Normal Wake-Talk and normal shortcuts
+keep their existing paste behavior. Overlapping wake phrases and conflicting
+Handy shortcuts are rejected. Both routes share one recorder; triggers received
+while another recording or transcription is busy do not change its destination.
+
+An active Codex turn receives the message immediately as steering input. If the
+thread is idle, the desktop starts the next turn in that same thread. Codex-Talk
+never selects a model. A failed delivery retains its text and original thread in
+the tab until retry or discard (in memory until Handy exits). After a timeout,
+check the thread before retrying: the desktop may already have accepted it.
+Stopping listening cannot recall a message already accepted by Codex. Normal
+Handy audio history and retention still apply; the final text is sent to Codex
+for model processing.
+
+This Windows integration connects to the running desktop's local `codex-ipc`
+named pipe and versioned thread-follower protocol. It uses the desktop's account,
+not WSL Codex or a separately launched app-server. This is a private desktop
+interface and may need updates when Codex changes it. No network listener,
+credential copying, separate terminal, or replacement Codex process is needed.
+Keep Codex desktop and the destination thread open. Connection and delivery
+errors appear in Codex-Talk and Handy's normal notice UI.

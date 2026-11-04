@@ -3,7 +3,7 @@
 //! The OS recognizer spots only the wake phrase on the default Windows mic.
 //! Handy's existing recorder/model owns transcription. Pause kills the detector
 //! and cancels this controller's session, including an in-flight paste.
-mod endpoint;
+pub(crate) mod endpoint;
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -73,6 +73,7 @@ impl VoiceStatus {
 static ENDPOINT: OnceLock<Mutex<Option<endpoint::Endpoint>>> = OnceLock::new();
 
 pub fn speech_frame() {
+    crate::codex_talk::speech_frame();
     if let Some(endpoint) = ENDPOINT.get() {
         if let Ok(mut guard) = endpoint.lock() {
             if let Some(endpoint) = guard.as_mut() {
@@ -88,11 +89,11 @@ fn set_endpoint(endpoint: Option<endpoint::Endpoint>) {
     }
 }
 
-enum Message {
+pub(crate) enum Message {
     Configure(VoiceControlSettings),
     Detector(u64, String),
     DetectorError(u64, String),
-    Finished,
+    Finished(u64),
     CaptureReady,
     Position(i32, i32),
     Shutdown,
@@ -113,9 +114,13 @@ impl VoiceControl {
     }
 }
 
-pub fn pipeline_finished(app: &AppHandle) {
+pub fn pipeline_finished(app: &AppHandle, token: Option<u64>) {
+    let Some(token) = token else {
+        return;
+    };
+    crate::codex_talk::pipeline_finished(app, token);
     if let Some(control) = app.try_state::<VoiceControl>() {
-        let _ = control.tx.send(Message::Finished);
+        let _ = control.tx.send(Message::Finished(token));
     }
 }
 
@@ -179,6 +184,7 @@ pub fn configure_voice_control(
         position: settings.voice_control.position,
     };
     validate(&config)?;
+    crate::codex_talk::validate_wake_conflict(&settings.codex_talk, &config.phrase)?;
     // The detector owns the idle microphone. Keep the transcription recorder
     // on demand so Pause really releases background microphone capture.
     if config.enabled && settings.always_on_microphone {
@@ -251,7 +257,7 @@ fn report_error(app: &AppHandle, detail: &str) {
 }
 
 #[cfg(target_os = "windows")]
-struct Detector(std::process::Child);
+pub(crate) struct Detector(pub(crate) std::process::Child);
 
 #[cfg(target_os = "windows")]
 impl Drop for Detector {
@@ -262,7 +268,7 @@ impl Drop for Detector {
 }
 
 #[cfg(target_os = "windows")]
-fn spawn_detector(
+pub(crate) fn spawn_detector(
     phrase: &str,
     generation: u64,
     tx: mpsc::Sender<Message>,
@@ -431,7 +437,7 @@ fn run(
                 crate::settings::write_settings(&app, settings);
                 report_error(&app, &error);
             }
-            Some(Message::Finished) if session.is_some() => {
+            Some(Message::Finished(token)) if session == Some(token) => {
                 session = None;
                 set_endpoint(None);
                 phase = if enabled { "listening" } else { "paused" };

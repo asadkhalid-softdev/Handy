@@ -5,6 +5,46 @@
 
 
 export const commands = {
+async getCodexTalkStatus() : Promise<Result<CodexTalkStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_codex_talk_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async configureCodexTalk(config: CodexTalkSettings) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("configure_codex_talk", { config }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async checkCodexThread(threadId: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("check_codex_thread", { threadId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async retryCodexMessage() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("retry_codex_message") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async discardCodexMessage() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("discard_codex_message") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async getVoiceControlStatus() : Promise<Result<VoiceStatus, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_voice_control_status") };
@@ -1118,7 +1158,7 @@ transcriptionJob: "transcription-job"
  * object, so a partial store can never fail the whole load (#1619).
  * Field-level defaults below take precedence where present.
  */
-export type AppSettings = { voice_control?: VoiceControlSettings;
+export type AppSettings = { voice_control?: VoiceControlSettings; codex_talk: CodexTalkSettings;
 /**
  * Internal settings schema marker for one-time migrations. Fresh installs
  * start at the current version; existing stores missing this key are
@@ -1236,6 +1276,8 @@ export type ChineseScript =
  */
 "traditional_hk"
 export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"
+export type CodexTalkSettings = { feature_enabled: boolean; listening: boolean; phrase: string; shortcut: string; thread_id: string }
+export type CodexTalkStatus = { settings: CodexTalkSettings; phase: string; model: string | null; error: string | null; delivery: string | null; pending_text: string | null; pending_thread: string | null }
 export type CustomSounds = { start: boolean; stop: boolean }
 export type GpuDeviceOption = { id: string; name: string; total_vram_mb: number }
 export type HistoryEntry = { id: number; file_name: string; timestamp: number; saved: boolean; title: string; transcription_text: string; post_processed_text: string | null; post_process_prompt: string | null; post_process_requested: boolean; 
@@ -1367,7 +1409,7 @@ detail: string | null }
 /**
  * The frontend maps each code to its text in `src/lib/notices.ts`.
  */
-export type NoticeCode = "WakeWordFailed" | "TranscriptionFailed" | "PasteFailed" | "NoMicrophone" | "MicPermissionDenied" | "RecordingFailed" | "ModelLoadFailed" | "PostProcessFailed" | "FileTranscriptionFailed" | "FilePostProcessFailed"
+export type NoticeCode = "WakeWordFailed" | "CodexTalkFailed" | "TranscriptionFailed" | "PasteFailed" | "NoMicrophone" | "MicPermissionDenied" | "RecordingFailed" | "ModelLoadFailed" | "PostProcessFailed" | "FileTranscriptionFailed" | "FilePostProcessFailed"
 export type NoticeLevel = 
 /**
  * Nothing came out, or Handy can't do its job.
@@ -1382,7 +1424,7 @@ export type NoticeLevel =
  * overlay: a file job finishes while the user is doing something else, and
  * `Model` is a switch the user made in Settings or the tray.
  */
-export type NoticeSource = "wakeword" | "dictation" | "file" | "model"
+export type NoticeSource = "wakeword" | "codextalk" | "dictation" | "file" | "model"
 export type NoticesChanged = { 
 /**
  * Every active notice, newest first.

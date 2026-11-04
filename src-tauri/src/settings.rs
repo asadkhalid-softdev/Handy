@@ -396,6 +396,7 @@ impl std::ops::DerefMut for SecretMap {
 pub struct AppSettings {
     #[serde(default)]
     pub voice_control: crate::voice_control::VoiceControlSettings,
+    pub codex_talk: crate::codex_talk::CodexTalkSettings,
     /// Internal settings schema marker for one-time migrations. Fresh installs
     /// start at the current version; existing stores missing this key are
     /// treated as version 0 and migrated forward.
@@ -1002,6 +1003,7 @@ pub fn get_default_settings() -> AppSettings {
 
     AppSettings {
         voice_control: crate::voice_control::VoiceControlSettings::default(),
+        codex_talk: crate::codex_talk::CodexTalkSettings::default(),
         settings_schema_version: default_settings_schema_version(),
         bindings,
         shortcut_activation: ShortcutActivation::default(),

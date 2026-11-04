@@ -1,4 +1,39 @@
 {
+  "codexTalk": {
+    "recheck": "Check again",
+    "discard": "Discard retained message",
+    "phase": {
+      "disabled": "Codex-Talk disabled",
+      "paused": "Wake listening paused",
+      "starting": "Starting wake listener",
+      "listening": "Listening for the Codex wake phrase",
+      "arming": "Starting microphone",
+      "recording": "Recording for Codex",
+      "processing": "Transcribing and sending to Codex",
+      "error": "Check Codex-Talk settings"
+    },
+    "description": "Send local voice transcriptions directly to a Windows Codex desktop thread. Normal dictation keeps its own destination.",
+    "destination": "Codex destination",
+    "threadId": "Thread ID",
+    "modelHint": "Uses the model and reasoning settings last selected in this thread. Keep the thread open in Windows Codex desktop.",
+    "shortcut": "Dedicated shortcut",
+    "triggerHint": "Use a distinct wake phrase and shortcut. Press the shortcut to start, then press it again or stop speaking to send. Follow-ups steer an active turn immediately; idle threads start a new turn.",
+    "enable": "Enable Codex-Talk",
+    "listeningHint": "Play listens for the Codex wake phrase. Pause stops that listener and cancels its recording; the dedicated shortcut remains available while this feature is enabled.",
+    "retained": "Retained message. Check the target thread before retrying after a timeout to avoid duplicates.",
+    "retry": "Retry delivery",
+    "check": {
+      "checking": "Checking Windows Codex…",
+      "accessible": "Accessible · model:",
+      "failed": "Cannot access thread:"
+    },
+    "delivery": {
+      "sending": "Sending to Codex…",
+      "sent": "Sent to the selected thread.",
+      "steered": "Steering message accepted by Codex.",
+      "failed": "Delivery failed. Your message is retained below."
+    }
+  },
   "tray": {
     "settings": "設定…",
     "checkUpdates": "アップデートを確認…",
@@ -13,6 +48,7 @@
     "otherLanguages": "その他の言語"
   },
   "sidebar": {
+    "codexTalk": "Codex-Talk",
     "general": "一般",
     "models": "モデル",
     "advanced": "詳細設定",
@@ -931,6 +967,7 @@
     "noOptionsFound": "オプションが見つかりません"
   },
   "errors": {
+    "codexTalkFailedTitle": "Codex-Talk Failed",
     "loadDirectory": "ディレクトリの読み込みエラー: {{error}}",
     "micPermissionDeniedTitle": "マイクへのアクセスが拒否されました",
     "micPermissionDenied": {

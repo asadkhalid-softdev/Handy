@@ -32,6 +32,7 @@ pub enum NoticeLevel {
 #[serde(rename_all = "lowercase")]
 pub enum NoticeSource {
     WakeWord,
+    CodexTalk,
     Dictation,
     File,
     Model,
@@ -41,6 +42,7 @@ pub enum NoticeSource {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub enum NoticeCode {
     WakeWordFailed,
+    CodexTalkFailed,
     TranscriptionFailed,
     PasteFailed,
     NoMicrophone,
@@ -55,7 +57,8 @@ pub enum NoticeCode {
 impl NoticeCode {
     fn level(self) -> NoticeLevel {
         match self {
-            Self::WakeWordFailed
+            Self::CodexTalkFailed
+            | Self::WakeWordFailed
             | Self::TranscriptionFailed
             | Self::PasteFailed
             | Self::NoMicrophone
@@ -70,6 +73,7 @@ impl NoticeCode {
     /// The same `errors.*Title` string the frontend shows (see `build.rs`).
     pub fn tray_title(self, strings: &TrayStrings) -> &str {
         match self {
+            Self::CodexTalkFailed => &strings.codex_talk_failed_title,
             Self::WakeWordFailed => &strings.wake_word_failed_title,
             Self::TranscriptionFailed => &strings.transcription_failed_title,
             Self::PasteFailed => &strings.paste_failed_title,

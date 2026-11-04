@@ -1,4 +1,5 @@
 # Offline smoke test: synthesizes WAVs and never opens a microphone.
+param([string]$WakePhrase = 'hey handy')
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Speech
 $detector = Join-Path $PSScriptRoot '..\src-tauri\src\voice_control\detector.ps1'
@@ -6,7 +7,7 @@ $testDir = Join-Path ([IO.Path]::GetTempPath()) ('handy-wake-' + [Guid]::NewGuid
 New-Item -ItemType Directory $testDir | Out-Null
 try {
     foreach ($case in @(
-        @{ Name = 'wake'; Text = 'hey handy'; Expected = $true },
+        @{ Name = 'wake'; Text = $WakePhrase; Expected = $true },
         @{ Name = 'unrelated'; Text = 'the weather is sunny this afternoon'; Expected = $false }
     )) {
         $wave = Join-Path $testDir ($case.Name + '.wav')
@@ -17,7 +18,7 @@ try {
             $speech.SetOutputToWaveFile($wave)
             $speech.Speak($case.Text)
         } finally { $speech.Dispose() }
-        $env:HANDY_WAKE_PHRASE = 'hey handy'
+        $env:HANDY_WAKE_PHRASE = $WakePhrase
         $env:HANDY_WAKE_PARENT = $PID.ToString()
         $env:HANDY_WAKE_TEST_WAV = $wave
         $output = Join-Path $testDir ($case.Name + '.txt')

@@ -8,6 +8,7 @@ mod catalog;
 mod chinese_script;
 pub mod cli;
 mod clipboard;
+mod codex_talk;
 mod commands;
 pub mod engine_supervisor;
 mod helpers;
@@ -397,6 +398,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     // Create the recording overlay window (hidden by default)
     utils::create_recording_overlay(app_handle);
     voice_control::initialize(app_handle);
+    codex_talk::initialize(app_handle);
 }
 
 #[tauri::command]
@@ -684,6 +686,11 @@ pub fn run(cli_args: CliArgs) {
 
     let specta_builder = Builder::<tauri::Wry>::new()
         .commands(collect_commands![
+            codex_talk::get_codex_talk_status,
+            codex_talk::configure_codex_talk,
+            codex_talk::check_codex_thread,
+            codex_talk::retry_codex_message,
+            codex_talk::discard_codex_message,
             voice_control::get_voice_control_status,
             voice_control::configure_voice_control,
             voice_control::show_voice_control,
@@ -1185,7 +1192,10 @@ pub fn run(cli_args: CliArgs) {
     // `app` is only used by the macOS arm.
     #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
     app.run(|app, event| match &event {
-        tauri::RunEvent::Exit => voice_control::shutdown(app),
+        tauri::RunEvent::Exit => {
+            voice_control::shutdown(app);
+            codex_talk::shutdown(app);
+        }
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Reopen { .. } => {
             // Fired when the already-running bundle is launched again from

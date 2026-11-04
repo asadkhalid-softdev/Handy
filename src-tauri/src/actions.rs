@@ -699,6 +699,11 @@ impl ShortcutAction for TranscribeAction {
         // Play audio feedback for recording stop
         play_feedback_sound(app, SoundType::Stop);
 
+        let codex_target = if binding_id == "codex_talk" {
+            crate::codex_talk::recording_target(app)
+        } else {
+            None
+        };
         let binding_id = binding_id.to_string(); // Clone binding_id for the async task
         let post_process = self.post_process;
         let cancel_generation = rm.cancel_generation();
@@ -835,6 +840,28 @@ impl ShortcutAction for TranscribeAction {
                                 ) {
                                     error!("Failed to save history entry: {}", err);
                                 }
+                            }
+
+                            if binding_id == "codex_talk" {
+                                // This route never touches the clipboard or the normal paste hook.
+                                if let Some(target) = codex_target.as_deref() {
+                                    crate::codex_talk::deliver(
+                                        &ah,
+                                        target,
+                                        &processed.final_text,
+                                        Some(cancel_generation),
+                                    )
+                                    .await;
+                                }
+                                utils::hide_recording_overlay(&ah);
+                                set_tray_state(&ah, TrayIconState::Idle);
+                                emit_transcription_complete(
+                                    &ah,
+                                    empty_outcome(input_silent),
+                                    sample_count,
+                                    stop_time,
+                                );
+                                return;
                             }
 
                             // The user's hook only changes what gets pasted;
@@ -1064,6 +1091,12 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
     map.insert(
         "transcribe_with_post_process".to_string(),
         Arc::new(TranscribeAction { post_process: true }) as Arc<dyn ShortcutAction>,
+    );
+    map.insert(
+        "codex_talk".to_string(),
+        Arc::new(TranscribeAction {
+            post_process: false,
+        }) as Arc<dyn ShortcutAction>,
     );
     map.insert(
         "cancel".to_string(),

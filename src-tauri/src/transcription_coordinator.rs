@@ -199,10 +199,20 @@ enum Effect {
 /// Commands processed sequentially by the coordinator thread.
 enum Command {
     Input(InputEvent),
-    VoiceStart { token: u64, reply: Sender<bool> },
-    VoiceStop { token: u64 },
-    VoiceCancel { token: u64 },
-    Cancel { recording_was_active: bool },
+    VoiceStart {
+        token: u64,
+        codex: bool,
+        reply: Sender<bool>,
+    },
+    VoiceStop {
+        token: u64,
+    },
+    VoiceCancel {
+        token: u64,
+    },
+    Cancel {
+        recording_was_active: bool,
+    },
     ProcessingFinished,
 }
 
@@ -569,12 +579,17 @@ impl CoordinatorState {
 
     // Wake events never toggle or queue behind a manual recording. Tokens
     // prevent stale silence timeouts or Pause from affecting later sessions.
+    #[cfg(test)]
     fn on_voice_start(&mut self, token: u64) -> Option<Effect> {
+        self.on_targeted_voice_start(token, false)
+    }
+
+    fn on_targeted_voice_start(&mut self, token: u64, codex: bool) -> Option<Effect> {
         if self.stage != Stage::Idle {
             return None;
         }
         let effect = self.begin_recording(
-            "transcribe".into(),
+            if codex { "codex_talk" } else { "transcribe" }.into(),
             "wake-word".into(),
             Instant::now(),
             true,
@@ -584,10 +599,13 @@ impl CoordinatorState {
     }
 
     fn on_voice_stop(&mut self, token: u64) -> Option<Effect> {
-        if self.voice_token != Some(token) || self.stage != Stage::Recording("transcribe".into()) {
+        if self.voice_token != Some(token) {
             return None;
         }
-        Some(self.begin_processing("transcribe".into(), "wake-word".into()))
+        let Stage::Recording(binding) = &self.stage else {
+            return None;
+        };
+        Some(self.begin_processing(binding.clone(), "wake-word".into()))
     }
 }
 
@@ -637,13 +655,17 @@ impl TranscriptionCoordinator {
 
                     let was_locked = state.is_recording_locked();
                     match cmd {
-                        Command::VoiceStart { token, reply } => {
+                        Command::VoiceStart {
+                            token,
+                            codex,
+                            reply,
+                        } => {
                             let file_job_active = app
                                 .state::<Arc<crate::managers::transcription::TranscriptionManager>>(
                                 )
                                 .job_active();
                             if !file_job_active {
-                                if let Some(effect) = state.on_voice_start(token) {
+                                if let Some(effect) = state.on_targeted_voice_start(token, codex) {
                                     run_effect(&app, &mut state, effect);
                                 }
                             }
@@ -670,16 +692,17 @@ impl TranscriptionCoordinator {
                             // A cancel while transcribing ends the take too.
                             let busy =
                                 recording_was_active || matches!(state.stage, Stage::Processing);
+                            let voice_token = state.voice_token;
                             state.on_cancel(recording_was_active);
                             if busy {
                                 emit_recording_phase(&app, RecordingPhase::Cancelled);
                             }
-                            if recording_was_active {
-                                crate::voice_control::pipeline_finished(&app);
+                            if busy {
+                                crate::voice_control::pipeline_finished(&app, voice_token);
                             }
                         }
                         Command::ProcessingFinished => {
-                            crate::voice_control::pipeline_finished(&app);
+                            crate::voice_control::pipeline_finished(&app, state.voice_token);
                             if let Some(effect) = state.on_processing_finished() {
                                 run_effect(&app, &mut state, effect);
                             }
@@ -758,8 +781,18 @@ impl TranscriptionCoordinator {
     }
 
     pub fn start_voice(&self, token: u64) -> bool {
+        self.start_targeted_voice(token, false)
+    }
+
+    pub fn start_targeted_voice(&self, token: u64, codex: bool) -> bool {
         let (reply, result) = mpsc::channel();
-        self.tx.send(Command::VoiceStart { token, reply }).is_ok()
+        self.tx
+            .send(Command::VoiceStart {
+                token,
+                codex,
+                reply,
+            })
+            .is_ok()
             && result
                 .recv_timeout(Duration::from_secs(10))
                 .unwrap_or(false)
@@ -842,6 +875,18 @@ fn stop(app: &AppHandle, binding_id: &str, hotkey_string: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn codex_voice_routing_cannot_be_stopped_or_retargeted_by_normal_triggers() {
+        let mut state = CoordinatorState::new();
+        let token = 1u64 << 63;
+        assert!(matches!(state.on_targeted_voice_start(token, true),
+            Some(Effect::Start { binding_id, .. }) if binding_id == "codex_talk"));
+        assert!(state.on_voice_start(1).is_none());
+        assert!(state.on_voice_stop(1).is_none());
+        assert!(matches!(state.on_voice_stop(token),
+            Some(Effect::Stop { binding_id, .. }) if binding_id == "codex_talk"));
+    }
 
     #[test]
     fn voice_start_never_toggles_or_queues_behind_another_session() {

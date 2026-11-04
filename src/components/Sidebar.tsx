@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { type } from "@tauri-apps/plugin-os";
 import { VoiceControlSettings } from "./settings/VoiceControlSettings";
+import { CodexTalkSettings } from "./settings/CodexTalkSettings";
 import HandyTextLogo from "./icons/HandyTextLogo";
 import HandyHand from "./icons/HandyHand";
 import { useSettings } from "../hooks/useSettings";
@@ -58,6 +59,12 @@ export const SECTIONS_CONFIG = {
     labelKey: "sidebar.wakeTalk",
     icon: Mic,
     component: VoiceControlSettings,
+    enabled: () => type() === "windows",
+  },
+  codexTalk: {
+    labelKey: "sidebar.codexTalk",
+    icon: Sparkles,
+    component: CodexTalkSettings,
     enabled: () => type() === "windows",
   },
   models: {
