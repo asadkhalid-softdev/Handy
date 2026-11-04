@@ -1,5 +1,6 @@
 //! Independent wake/key capture with a fixed destination per recording.
 mod desktop;
+pub use desktop::CodexConversation;
 
 use crate::voice_control::endpoint::Endpoint;
 use serde::{Deserialize, Serialize};
@@ -46,6 +47,7 @@ pub struct CodexTalkStatus {
     pub pending_text: Option<String>,
     pub pending_thread: Option<String>,
     pub history: Vec<CodexTalkMessage>,
+    pub conversation_busy: bool,
 }
 
 impl CodexTalkStatus {
@@ -76,8 +78,9 @@ impl CodexTalkStatus {
         }
     }
 
-    fn clear_history(&mut self) -> Result<(), String> {
-        if matches!(self.phase.as_str(), "arming" | "recording" | "processing")
+    fn ensure_history_idle(&self) -> Result<(), String> {
+        if self.conversation_busy
+            || matches!(self.phase.as_str(), "arming" | "recording" | "processing")
             || self.delivery.as_deref() == Some("sending")
         {
             return Err(
@@ -85,6 +88,11 @@ impl CodexTalkStatus {
                     .into(),
             );
         }
+        Ok(())
+    }
+
+    fn clear_history(&mut self) -> Result<(), String> {
+        self.ensure_history_idle()?;
         self.history.clear();
         self.pending_text = None;
         self.pending_thread = None;
@@ -331,6 +339,9 @@ pub async fn retry_codex_message(app: AppHandle) -> Result<(), String> {
     {
         let control = app.state::<CodexTalk>();
         let mut status = control.status.lock().map_err(|e| e.to_string())?;
+        if status.conversation_busy {
+            return Err("Wait for the conversation reset to finish.".into());
+        }
         if status.delivery.as_deref() != Some("failed") {
             return Err("Delivery already in progress".into());
         }
@@ -354,6 +365,56 @@ pub fn discard_codex_message(app: AppHandle) -> Result<(), String> {
     let _ = app.emit("codex-talk-status", status.clone());
     crate::notices::clear(&app, crate::notices::NoticeSource::CodexTalk);
     Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn load_codex_conversation(thread_id: String) -> Result<CodexConversation, String> {
+    uuid::Uuid::parse_str(&thread_id).map_err(|_| "Enter a valid Codex thread UUID".to_string())?;
+    #[cfg(target_os = "windows")]
+    {
+        desktop::Desktop::connect()
+            .await?
+            .conversation(&thread_id)
+            .await
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Codex-Talk requires Windows Codex desktop.".into())
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clear_codex_conversation(
+    app: AppHandle,
+    thread_id: String,
+) -> Result<CodexConversation, String> {
+    uuid::Uuid::parse_str(&thread_id).map_err(|_| "Enter a valid Codex thread UUID".to_string())?;
+    {
+        let control = app.state::<CodexTalk>();
+        let mut status = control.status.lock().map_err(|e| e.to_string())?;
+        status.ensure_history_idle()?;
+        status.conversation_busy = true;
+        let _ = app.emit("codex-talk-status", status.clone());
+    }
+    #[cfg(target_os = "windows")]
+    let result = match desktop::Desktop::connect().await {
+        Ok(mut desktop) => desktop.reset_conversation(&thread_id).await,
+        Err(error) => Err(error),
+    };
+    #[cfg(not(target_os = "windows"))]
+    let result: Result<CodexConversation, String> = Err("Codex-Talk requires Windows".into());
+    update(&app, |status| {
+        status.conversation_busy = false;
+        if result.is_ok() {
+            let _ = status.clear_history();
+        }
+    });
+    if result.is_ok() {
+        crate::notices::clear(&app, crate::notices::NoticeSource::CodexTalk);
+    }
+    result
 }
 
 #[tauri::command]
@@ -392,6 +453,7 @@ pub fn initialize(app: &AppHandle) {
             pending_text: None,
             pending_thread: None,
             history: Vec::new(),
+            conversation_busy: false,
         })),
     });
     let ready = tx.clone();
@@ -519,14 +581,13 @@ fn run(
                         update(&app, |s| s.phase = "processing".into());
                     }
                 } else {
-                    let has_pending = app
-                        .state::<CodexTalk>()
-                        .status
-                        .lock()
-                        .map(|s| s.pending_text.is_some())
-                        .unwrap_or(true);
-                    if has_pending {
-                        report(&app, "Resolve the previous failed message in Codex-Talk before recording another.");
+                    let blocked = app.state::<CodexTalk>().status.lock().map(|mut status| {
+                        if status.conversation_busy { Some("Wait for the Codex conversation reset to finish.") }
+                        else if status.pending_text.is_some() { Some("Resolve the previous failed message in Codex-Talk before recording another.") }
+                        else { status.phase = "arming".into(); None }
+                    }).unwrap_or(Some("Codex-Talk status is unavailable."));
+                    if let Some(error) = blocked {
+                        report(&app, error);
                         continue;
                     }
                     next_token += 1;
@@ -545,6 +606,14 @@ fn run(
                         endpoint(None);
                         app.state::<TranscriptionCoordinator>()
                             .cancel_voice(next_token);
+                        update(&app, |s| {
+                            s.phase = if config.listening && detector_ready {
+                                "listening"
+                            } else {
+                                "paused"
+                            }
+                            .into()
+                        });
                     }
                 }
             }
@@ -654,6 +723,7 @@ mod tests {
             pending_text: Some("retained".into()),
             pending_thread: Some("original-thread".into()),
             history: Vec::new(),
+            conversation_busy: false,
         }
     }
 

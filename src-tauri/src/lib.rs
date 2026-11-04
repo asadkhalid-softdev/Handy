@@ -692,6 +692,8 @@ pub fn run(cli_args: CliArgs) {
             codex_talk::retry_codex_message,
             codex_talk::discard_codex_message,
             codex_talk::clear_codex_message_history,
+            codex_talk::load_codex_conversation,
+            codex_talk::clear_codex_conversation,
             voice_control::get_voice_control_status,
             voice_control::configure_voice_control,
             voice_control::show_voice_control,

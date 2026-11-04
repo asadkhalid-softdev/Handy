@@ -10,7 +10,7 @@ separate from Handy's speech-to-text models and does not send audio to a server.
 1. Launch Handy Voice and open the **Wake-Talk** tab. The floating control
    starts paused on a fresh install.
 2. Enable Wake-Talk, choose a wake word or phrase (default: “hey handy”)
-   and a silence timeout, then save. Changes require listening to be paused.
+   and a silence timeout in seconds (0.1–10, at most one decimal place), then save. Changes require listening to be paused.
 3. Press Play in Wake-Talk or the floating control. Hover over its play/pause
    icon to check the listening state.
 4. Say “hey handy”, wait for the soft readiness bell and pink recording
@@ -149,11 +149,20 @@ thread is idle, the desktop starts the next turn in that same thread. Codex-Talk
 never selects a model. A failed delivery retains its text and original thread in
 the tab until retry or discard (in memory until Handy exits). After a timeout,
 check the thread before retrying: the desktop may already have accepted it.
-The Message history section lists up to 100 messages for this Handy session,
-including their destination and delivery status. **Clear message history** clears
-that list, retained failed text and delivery notices. It is unavailable during a
-recording or delivery. It does not clear the Codex conversation or recordings in
-Handy's History tab. The list also clears when Handy exits.
+The **Codex conversation** section loads the actual selected desktop thread,
+including messages sent outside Handy, and refreshes every five seconds while
+this tab is open. **Clear Codex conversation** uses the desktop's supported
+edit-earlier-message operation to remove the old turns and start a fresh reset
+turn in the same thread. A brief reset message and acknowledgement remain.
+The thread ID, current model and workspace instructions are preserved; files
+are not reverted. Clearing is blocked while Handy is recording/sending or Codex
+is processing a turn. Threads whose first turn contains attachments are refused
+to avoid carrying those attachments into a reset.
+
+The separate **Handy delivery log** lists up to 100 deliveries for this Handy
+session. **Clear delivery log** clears only that list, retained failed text and
+delivery notices. It does not clear the Codex conversation or recordings in
+Handy's History tab. The log also clears when Handy exits.
 
 Stopping listening cannot recall a message already accepted by Codex. Normal
 Handy audio history and retention still apply; the final text is sent to Codex

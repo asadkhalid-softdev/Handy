@@ -106,6 +106,42 @@ test.beforeEach(async ({ page }) => {
           }
           if (command === "get_codex_talk_status")
             return structuredClone(codexStatus);
+          if (command === "load_codex_conversation") {
+            if (Reflect.get(window, "testCodexCheckError"))
+              throw "Thread is not accessible";
+            return {
+              thread_id: args.threadId,
+              model: "thread-selected-model",
+              active: false,
+              messages: Reflect.get(
+                window,
+                "testCodexConversationMessages",
+              ) ?? [
+                {
+                  role: "user",
+                  text: "Earlier desktop message",
+                  timestamp: 1700000000000,
+                  turn_id: "old-turn",
+                },
+              ],
+            };
+          }
+          if (command === "clear_codex_conversation") {
+            Reflect.set(window, "testCodexConversationMessages", [
+              {
+                role: "assistant",
+                text: "Ready",
+                timestamp: 1700000000001,
+                turn_id: "reset-turn",
+              },
+            ]);
+            return {
+              thread_id: args.threadId,
+              model: "thread-selected-model",
+              active: false,
+              messages: Reflect.get(window, "testCodexConversationMessages"),
+            };
+          }
           if (command === "check_codex_thread") {
             if (Reflect.get(window, "testCodexCheckError"))
               throw "Thread is not accessible";
@@ -392,9 +428,9 @@ test("clearing Codex-Talk history clears local messages without changing the des
     }),
   );
   await expect(
-    page.getByRole("list", { name: "Message history" }),
+    page.getByRole("list", { name: "Handy delivery log" }),
   ).toContainText("Sent message");
-  await page.getByRole("button", { name: "Clear message history" }).click();
+  await page.getByRole("button", { name: "Clear delivery log" }).click();
   await expect(page.getByText("No messages in this session.")).toBeVisible();
   await expect(
     page.getByText("Retained failed message", { exact: true }),
@@ -436,9 +472,58 @@ test("Codex-Talk cannot clear a message while it is being sent", async ({
     }),
   );
   await expect(
-    page.getByRole("button", { name: "Clear message history" }),
+    page.getByRole("button", { name: "Clear delivery log" }),
   ).toBeDisabled();
   await expect(
     page.getByText("In-flight message", { exact: true }),
   ).toBeVisible();
+});
+
+test("Codex conversation loads existing desktop messages and clears the selected thread", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByText("Codex-Talk", { exact: true }).click();
+  await expect(
+    page.getByRole("list", { name: "Codex conversation" }),
+  ).toContainText("Earlier desktop message");
+  await page.getByRole("button", { name: "Clear Codex conversation" }).click();
+  await expect(
+    page.getByText("Earlier desktop message", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Ready", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Thread ID")).toHaveValue(
+    "01a1a777-2733-73c3-999d-c7d0e0f7cfaf",
+  );
+  const calls = await page.evaluate(() =>
+    Reflect.get(window, "testVoiceCalls"),
+  );
+  expect(calls).toContain("load_codex_conversation");
+  expect(calls).toContain("clear_codex_conversation");
+  expect(calls).not.toContain("clear_codex_message_history");
+});
+
+test("Wake-Talk silence is entered in seconds with one decimal place", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByText("Wake-Talk", { exact: true }).click();
+  const timeout = page.getByRole("spinbutton", {
+    name: "Finish after silence",
+  });
+  await expect(timeout).toHaveAttribute("step", "0.1");
+  await timeout.fill("0.1");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  const values = await page.evaluate(() =>
+    Reflect.get(window, "testVoiceConfigurations"),
+  );
+  expect(values.at(-1)).toMatchObject({ silenceMs: 100 });
+  await timeout.fill("0.12");
+  expect(await timeout.inputValue()).not.toBe("0.12");
+  await timeout.fill("1.5");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  const updated = await page.evaluate(() =>
+    Reflect.get(window, "testVoiceConfigurations"),
+  );
+  expect(updated.at(-1)).toMatchObject({ silenceMs: 1500 });
 });

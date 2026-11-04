@@ -18,6 +18,17 @@ interface Message {
   thread_id: string;
   delivery: string;
 }
+interface Conversation {
+  thread_id: string;
+  model: string;
+  messages: {
+    role: string;
+    text: string;
+    timestamp: number;
+    turn_id: string | null;
+  }[];
+  active: boolean;
+}
 interface Status {
   settings: Config;
   phase: string;
@@ -27,6 +38,7 @@ interface Status {
   pending_text: string | null;
   pending_thread: string | null;
   history: Message[];
+  conversation_busy: boolean;
 }
 export function CodexTalkSettings() {
   const { t } = useTranslation();
@@ -35,6 +47,11 @@ export function CodexTalkSettings() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [checkRevision, setCheckRevision] = useState(0);
+  const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [loadingConversation, setLoadingConversation] = useState(false);
+  const [conversationError, setConversationError] = useState<string | null>(
+    null,
+  );
   const [check, setCheck] = useState({ phase: "checking", model: "" });
   useEffect(() => {
     let active = true;
@@ -61,13 +78,25 @@ export function CodexTalkSettings() {
     if (!threadId) return;
     let active = true;
     setCheck({ phase: "checking", model: "" });
+    setLoadingConversation(true);
+    setConversationError(null);
+    setConversation(null);
     const timer = setTimeout(() => {
-      void invoke<string>("check_codex_thread", { threadId })
-        .then((model) => {
-          if (active) setCheck({ phase: "accessible", model });
+      void invoke<Conversation>("load_codex_conversation", { threadId })
+        .then((value) => {
+          if (active) {
+            setConversation(value);
+            setCheck({ phase: "accessible", model: value.model });
+          }
         })
         .catch((e: unknown) => {
-          if (active) setCheck({ phase: "failed", model: String(e) });
+          if (active) {
+            setCheck({ phase: "failed", model: String(e) });
+            setConversationError(String(e));
+          }
+        })
+        .finally(() => {
+          if (active) setLoadingConversation(false);
         });
     }, 600);
     return () => {
@@ -75,6 +104,55 @@ export function CodexTalkSettings() {
       clearTimeout(timer);
     };
   }, [threadId, checkRevision]);
+  useEffect(() => {
+    if (
+      !threadId ||
+      check.phase !== "accessible" ||
+      busy ||
+      status?.conversation_busy
+    )
+      return;
+    let active = true;
+    let pending = false;
+    const timer = setInterval(() => {
+      if (pending) return;
+      pending = true;
+      void invoke<Conversation>("load_codex_conversation", { threadId })
+        .then((value) => {
+          if (active) {
+            setConversation(value);
+            setConversationError(null);
+          }
+        })
+        .catch((e: unknown) => {
+          if (active) setConversationError(String(e));
+        })
+        .finally(() => {
+          pending = false;
+        });
+    }, 5000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [threadId, check.phase, busy, status?.conversation_busy]);
+
+  async function clearConversation() {
+    if (!threadId) return;
+    setBusy(true);
+    setConversationError(null);
+    try {
+      const value = await invoke<Conversation>("clear_codex_conversation", {
+        threadId,
+      });
+      setConversation(value);
+    } catch (e) {
+      setConversationError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function save(config: Config) {
     setBusy(true);
     setError(null);
@@ -91,7 +169,10 @@ export function CodexTalkSettings() {
     status?.phase ?? "",
   );
   const editLocked =
-    busy || activeCapture || (status?.settings.listening ?? false);
+    busy ||
+    status?.conversation_busy ||
+    activeCapture ||
+    (status?.settings.listening ?? false);
   return (
     <section
       className="max-w-3xl w-full mx-auto space-y-6"
@@ -128,6 +209,76 @@ export function CodexTalkSettings() {
                 {t("codexTalk.recheck")}
               </button>
               <p className="text-xs text-text/60">{t("codexTalk.modelHint")}</p>
+            </div>
+          </SettingsGroup>
+          <SettingsGroup title={t("codexTalk.conversationTitle")}>
+            <div className="space-y-3 p-4">
+              <p className="text-xs font-mono text-text/60">
+                {conversation?.thread_id ?? threadId}
+              </p>
+              <p className="text-xs text-text/60">
+                {t("codexTalk.resetConversationHint")}
+              </p>
+              <button
+                className="border border-line rounded-lg px-4 py-2 text-sm disabled:opacity-40"
+                disabled={
+                  busy ||
+                  loadingConversation ||
+                  !!status?.conversation_busy ||
+                  activeCapture ||
+                  status?.delivery === "sending" ||
+                  !!conversationError ||
+                  !conversation?.messages.length ||
+                  conversation.thread_id !== threadId ||
+                  conversation.active
+                }
+                onClick={() => void clearConversation()}
+              >
+                {t("codexTalk.clearConversation")}
+              </button>
+              {loadingConversation ? (
+                <p role="status" className="text-sm text-text/60">
+                  {t("codexTalk.loadingConversation")}
+                </p>
+              ) : conversation?.messages.length ? (
+                <ol
+                  className="space-y-3 max-h-96 overflow-y-auto"
+                  aria-label={t("codexTalk.conversationTitle")}
+                >
+                  {conversation.messages.map((message, index) => (
+                    <li
+                      key={`${message.turn_id}-${index}`}
+                      className="border border-line rounded p-3 space-y-1"
+                    >
+                      <p className="text-xs text-text/60">
+                        {t(`codexTalk.roles.${message.role}`)}
+                        {message.timestamp > 0
+                          ? ` · ${new Date(message.timestamp).toLocaleString()}`
+                          : ""}
+                      </p>
+                      <p className="text-sm whitespace-pre-wrap">
+                        {message.text}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                conversation && (
+                  <p className="text-sm text-text/60">
+                    {t("codexTalk.conversationEmpty")}
+                  </p>
+                )
+              )}
+              {conversation?.active && (
+                <p role="status" className="text-xs text-text/60">
+                  {t("codexTalk.conversationActive")}
+                </p>
+              )}
+              {conversationError && (
+                <p role="alert" className="text-sm text-red-500">
+                  {conversationError}
+                </p>
+              )}
             </div>
           </SettingsGroup>
           <SettingsGroup title={t("voiceControl.configuration")}>
@@ -234,6 +385,7 @@ export function CodexTalkSettings() {
             disabled={
               !status ||
               busy ||
+              status?.conversation_busy ||
               activeCapture ||
               status.delivery === "sending" ||
               (!status.history?.length &&

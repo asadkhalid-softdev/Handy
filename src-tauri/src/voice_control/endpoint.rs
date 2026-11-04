@@ -16,7 +16,7 @@ impl Endpoint {
         Self {
             started: now,
             last_speech: None,
-            silence: Duration::from_millis(silence_ms.clamp(800, 10_000)),
+            silence: Duration::from_millis(silence_ms.clamp(100, 10_000)),
         }
     }
 
@@ -40,6 +40,15 @@ impl Endpoint {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn one_tenth_second_is_not_clamped_to_the_old_minimum() {
+        let now = Instant::now();
+        let mut endpoint = Endpoint::new(now, 100);
+        endpoint.speech(now);
+        assert!(!endpoint.finished(now + Duration::from_millis(99)));
+        assert!(endpoint.finished(now + Duration::from_millis(100)));
+    }
 
     #[test]
     fn silence_deadline_tracks_the_last_speech_not_session_start() {

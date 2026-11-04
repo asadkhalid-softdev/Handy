@@ -143,8 +143,10 @@ fn validate(settings: &VoiceControlSettings) -> Result<(), String> {
             "Use an English wake word or phrase of one to five words (letters and spaces).".into(),
         );
     }
-    if !(800..=10_000).contains(&settings.silence_ms) {
-        return Err("Silence timeout must be between 800 and 10000 milliseconds.".into());
+    if !(100..=10_000).contains(&settings.silence_ms) || settings.silence_ms % 100 != 0 {
+        return Err(
+            "Silence timeout must be 0.1 to 10 seconds, with at most one decimal place.".into(),
+        );
     }
     Ok(())
 }
@@ -566,6 +568,24 @@ mod tests {
         for phrase in ["hey; Start-Process calc", "$(whoami)", "hey\nhandy", ""] {
             settings.phrase = phrase.into();
             assert!(validate(&settings).is_err(), "{phrase:?}");
+        }
+    }
+
+    #[test]
+    fn silence_seconds_accept_one_decimal_place_and_reject_finer_precision() {
+        for milliseconds in [100, 200, 1500, 10_000] {
+            let settings = VoiceControlSettings {
+                silence_ms: milliseconds,
+                ..Default::default()
+            };
+            assert!(validate(&settings).is_ok());
+        }
+        for milliseconds in [0, 99, 120, 1550, 10_100] {
+            let settings = VoiceControlSettings {
+                silence_ms: milliseconds,
+                ..Default::default()
+            };
+            assert!(validate(&settings).is_err());
         }
     }
 

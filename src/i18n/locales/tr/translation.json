@@ -1,8 +1,15 @@
 {
   "codexTalk": {
-    "historyTitle": "Message history",
+    "conversationTitle": "Codex conversation",
+    "loadingConversation": "Loading the conversation from Windows Codex…",
+    "conversationEmpty": "This Codex conversation has no messages.",
+    "conversationActive": "Codex is working. Wait for its turn to finish before clearing the conversation.",
+    "clearConversation": "Clear Codex conversation",
+    "resetConversationHint": "Resets the conversation shown below in the same Codex thread. Previous turns are removed and replaced with a short reset message and acknowledgement. Your files and AGENTS.md remain unchanged.",
+    "roles": { "user": "You", "assistant": "Codex" },
+    "historyTitle": "Handy delivery log",
     "historyEmpty": "No messages in this session.",
-    "clearHistory": "Clear message history",
+    "clearHistory": "Clear delivery log",
     "clearHistoryHint": "Clears this tab’s message list and retained failed messages. Your Codex conversation and recordings in History remain unchanged. The list keeps up to 100 messages until Handy exits.",
     "recheck": "Check again",
     "discard": "Discard retained message",
@@ -1033,6 +1040,7 @@
     "dismiss": "Kapat"
   },
   "voiceControl": {
+    "silenceSecondsHint": "Seconds, from 0.1 to 10. Use at most one decimal place.",
     "title": "Wake-Talk",
     "description": "Start dictation hands-free with a wake word or phrase. Listening uses your default Windows microphone and runs locally.",
     "instructions": "Say the wake phrase, wait for the pink recording indicator, then dictate. Silence ends the recording and pastes the result.",

@@ -9,14 +9,19 @@ export function VoiceControlSettings() {
   const { t } = useTranslation();
   const { status, pending, error, configure } = useVoiceControl();
   const [phrase, setPhrase] = useState("");
-  const [silenceMs, setSilenceMs] = useState(2000);
+  const [silenceSeconds, setSilenceSeconds] = useState("2");
+  const validSilence =
+    /^\d+(?:\.\d)?$/.test(silenceSeconds) &&
+    Number(silenceSeconds) >= 0.1 &&
+    Number(silenceSeconds) <= 10;
+  const silenceMs = Math.round(Number(silenceSeconds) * 1000);
   const [showError, setShowError] = useState(false);
   const featureEnabled = status?.feature_enabled ?? false;
   const listening = status?.enabled ?? false;
   useEffect(() => {
     if (status) {
       setPhrase(status.phrase);
-      setSilenceMs(status.silence_ms);
+      setSilenceSeconds(String(status.silence_ms / 1000));
     }
   }, [status?.phrase, status?.silence_ms]);
   return (
@@ -97,25 +102,31 @@ export function VoiceControlSettings() {
           </label>
           <label className="flex items-center justify-between gap-3">
             <span>{t("voiceControl.silenceTimeout")}</span>
-            <select
-              className="border border-line rounded px-3 py-2 bg-background"
-              value={silenceMs}
+            <input
+              type="number"
+              min="0.1"
+              max="10"
+              step="0.1"
+              inputMode="decimal"
+              aria-describedby="wake-silence-hint"
+              className="border border-line rounded px-3 py-2 bg-transparent w-28"
+              value={silenceSeconds}
               disabled={!status || listening}
-              onChange={(event) => setSilenceMs(Number(event.target.value))}
-            >
-              {[1000, 1500, 2000, 3000, 5000].map((ms) => (
-                <option key={ms} value={ms}>
-                  {t("voiceControl.seconds", { count: ms / 1000 })}
-                </option>
-              ))}
-            </select>
+              onChange={(event) => {
+                const value = event.target.value;
+                if (/^\d*(?:\.\d?)?$/.test(value)) setSilenceSeconds(value);
+              }}
+            />
           </label>
+          <p id="wake-silence-hint" className="text-xs text-text/60">
+            {t("voiceControl.silenceSecondsHint")}
+          </p>
           <p className="text-xs text-text/60">
             {t("voiceControl.pauseToEdit")}
           </p>
           <button
             className="border border-line rounded-lg px-4 py-2 text-sm disabled:opacity-40"
-            disabled={!status || listening || pending}
+            disabled={!status || listening || pending || !validSilence}
             onClick={() => void configure(false, phrase, silenceMs)}
           >
             {t("voiceControl.save")}
