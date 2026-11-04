@@ -475,7 +475,7 @@ pub(crate) async fn process_transcription_output(
 }
 
 impl ShortcutAction for TranscribeAction {
-    fn start(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
+    fn start(&self, app: &AppHandle, binding_id: &str, shortcut_str: &str) {
         let start_time = Instant::now();
         debug!("TranscribeAction::start called for binding: {}", binding_id);
 
@@ -579,6 +579,7 @@ impl ShortcutAction for TranscribeAction {
                     "Recording request accepted in {:?}; waiting for first microphone samples",
                     recording_start_time.elapsed()
                 );
+                let is_wake_word = shortcut_str == "wake-word";
                 let generation = readiness.generation();
                 let app_clone = app.clone();
                 let rm_clone = Arc::clone(&rm);
@@ -609,13 +610,21 @@ impl ShortcutAction for TranscribeAction {
                     }
 
                     debug!("Microphone is receiving samples; recording is ready");
+                    // Confirm actual capture before sounding the wake bell. Finish
+                    // it before the pink ready indicator invites dictation.
+                    if is_wake_word {
+                        crate::audio_feedback::play_wake_ready_sound_blocking(&app_clone);
+                    }
+                    if !rm_clone.is_recording_readiness_current(generation) {
+                        return;
+                    }
                     utils::emit_recording_ready(&app_clone);
 
                     // The start chime is a readiness cue, so it must follow the
                     // first real input callback rather than Stream::play() or a
                     // fixed delay. The helper returns immediately when feedback
                     // is disabled; mute still follows the same readiness point.
-                    if rm_clone.is_recording_readiness_current(generation) {
+                    if !is_wake_word && rm_clone.is_recording_readiness_current(generation) {
                         play_feedback_sound_blocking(&app_clone, SoundType::Start);
                     }
                     if rm_clone.is_recording_readiness_current(generation) {

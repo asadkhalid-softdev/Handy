@@ -5,7 +5,7 @@ use log::{debug, error, warn};
 use rodio::cpal::traits::HostTrait;
 use rodio::DeviceSinkBuilder;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Cursor, Read, Seek};
 use std::path::{Path, PathBuf};
 use std::thread;
 use tauri::{AppHandle, Manager};
@@ -73,6 +73,20 @@ pub fn play_test_sound(app: &AppHandle, sound_type: SoundType) {
     }
 }
 
+/// Wake-Talk readiness is always audible, independently of general feedback.
+/// Keep the bell soft and use the configured output device and volume.
+pub fn play_wake_ready_sound_blocking(app: &AppHandle) {
+    let settings = settings::get_settings(app);
+    let bell = Cursor::new(include_bytes!("../resources/wake_ready.wav").as_slice());
+    if let Err(e) = play_audio(
+        bell,
+        settings.selected_output_device,
+        settings.audio_feedback_volume.clamp(0.0, 1.0) * 0.35,
+    ) {
+        warn!("Failed to play Wake-Talk readiness bell: {}", e);
+    }
+}
+
 fn play_sound_async(app: &AppHandle, path: PathBuf) {
     let app_handle = app.clone();
     thread::spawn(move || {
@@ -97,6 +111,14 @@ fn play_sound_at_path(app: &AppHandle, path: &Path) -> Result<(), Box<dyn std::e
 
 fn play_audio_file(
     path: &std::path::Path,
+    selected_device: Option<String>,
+    volume: f32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    play_audio(BufReader::new(File::open(path)?), selected_device, volume)
+}
+
+fn play_audio<R: Read + Seek + Send + Sync + 'static>(
+    reader: R,
     selected_device: Option<String>,
     volume: f32,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -126,10 +148,7 @@ fn play_audio_file(
     let device_sink = sink_builder.open_stream()?;
     let mixer = device_sink.mixer();
 
-    let file = File::open(path)?;
-    let buf_reader = BufReader::new(file);
-
-    let player = rodio::play(mixer, buf_reader)?;
+    let player = rodio::play(mixer, reader)?;
     player.set_volume(volume);
     player.sleep_until_end();
 

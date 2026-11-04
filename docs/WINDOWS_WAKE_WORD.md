@@ -13,8 +13,8 @@ separate from Handy's speech-to-text models and does not send audio to a server.
    and a silence timeout, then save. Changes require listening to be paused.
 3. Press Play in Wake-Talk or the floating control. Hover over its play/pause
    icon to check the listening state.
-4. Say “hey handy”, wait for the existing recording indicator to turn pink,
-   then dictate. The wake phrase is not included in the transcription.
+4. Say “hey handy”, wait for the soft readiness bell and pink recording
+   indicator, then dictate. The wake phrase is not included in the transcription.
 5. After silence, Handy finishes transcription and uses the configured paste
    method. For Tabby, use Shift+Insert. Automatic Enter remains off by default.
 
@@ -30,6 +30,13 @@ detector and cancels any voice-owned recording or pending
 transcription. A recording already pasted cannot be recalled. Pause is saved
 across restarts and login. Keyboard dictation still works on explicit shortcut
 presses while background listening is paused.
+
+A short, soft bell sounds only after a wake-triggered recording receives real
+microphone audio, immediately before the indicator turns pink. It replaces the
+usual start sound for wake dictation and works even with general audio feedback
+disabled. It uses the selected output device and feedback volume (at reduced
+loudness); setting that volume to zero silences it. Playback failure does not
+prevent dictation.
 
 ## Limits and microphone behavior
 
