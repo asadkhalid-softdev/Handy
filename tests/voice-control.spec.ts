@@ -527,3 +527,82 @@ test("Wake-Talk silence is entered in seconds with one decimal place", async ({
   );
   expect(updated.at(-1)).toMatchObject({ silenceMs: 1500 });
 });
+
+test("Wake-Talk stays enabled while suspended and can still be manually paused", async ({
+  page,
+}) => {
+  await page.goto("/src/voice-control/index.html");
+  await page
+    .getByRole("button", { name: "Resume microphone listening" })
+    .click();
+  await page.evaluate(() =>
+    Reflect.get(window, "testVoiceEmit")("voice-control-status", {
+      feature_enabled: true,
+      enabled: true,
+      phase: "suspended",
+      phrase: "hey handy",
+      silence_ms: 2000,
+    }),
+  );
+  await expect(page.locator(".voice-panel")).toHaveClass(/suspended/);
+  await expect(
+    page.getByRole("button", { name: "Pause microphone listening" }),
+  ).toHaveAttribute("title", /Waiting for Windows unlock/);
+  await page
+    .getByRole("button", { name: "Pause microphone listening" })
+    .click();
+  await expect(page.locator(".voice-panel")).toHaveClass(/paused/);
+  const configurations = await page.evaluate(() =>
+    Reflect.get(window, "testVoiceConfigurations"),
+  );
+  expect(configurations.at(-1)).toMatchObject({ enabled: false });
+});
+
+test("Codex-Talk suspension retains listening preference across unlock", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByText("Codex-Talk", { exact: true }).click();
+  await expect(page.getByLabel("Thread ID")).toBeVisible();
+  const state = {
+    settings: {
+      feature_enabled: true,
+      listening: true,
+      phrase: "hey codex",
+      shortcut: "Ctrl+Alt+Shift+Space",
+      thread_id: "01a1a777-2733-73c3-999d-c7d0e0f7cfaf",
+    },
+    phase: "suspended",
+    model: "thread-selected-model",
+    error: null,
+    delivery: null,
+    pending_text: null,
+    pending_thread: null,
+    history: [],
+    conversation_busy: false,
+  };
+  await page.evaluate(
+    (value) => Reflect.get(window, "testVoiceEmit")("codex-talk-status", value),
+    state,
+  );
+  await expect(
+    page.getByText("Waiting for Windows unlock", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Pause listening", exact: true }),
+  ).toBeEnabled();
+  await page.evaluate(
+    (value) =>
+      Reflect.get(window, "testVoiceEmit")("codex-talk-status", {
+        ...value,
+        phase: "listening",
+      }),
+    state,
+  );
+  await expect(
+    page.getByText("Listening for the Codex wake phrase", { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => Reflect.get(window, "testCodexConfigurations")),
+  ).toHaveLength(0);
+});

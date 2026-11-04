@@ -291,6 +291,8 @@ pub(crate) fn spawn_detector(
         .env("HANDY_WAKE_PHRASE", phrase)
         .env("HANDY_WAKE_PARENT", std::process::id().to_string())
         .env_remove("HANDY_WAKE_TEST_WAV")
+        .env_remove("HANDY_WAKE_TEST_SESSION_STEPS")
+        .env_remove("HANDY_WAKE_TEST_PROBE")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -402,7 +404,18 @@ fn run(
                 }
             }
             Some(Message::Detector(token, event)) if token == generation && enabled => {
-                if event == "ready" && phase == "starting" {
+                if event == "starting" {
+                    helper_started = Instant::now();
+                    phase = "starting";
+                    app.state::<VoiceControl>().publish(&app, phase, true);
+                } else if event == "suspended" {
+                    set_endpoint(None);
+                    if let Some(token) = session.take() {
+                        app.state::<TranscriptionCoordinator>().cancel_voice(token);
+                    }
+                    phase = "suspended";
+                    app.state::<VoiceControl>().publish(&app, phase, true);
+                } else if event == "ready" && matches!(phase, "starting" | "suspended") {
                     phase = "listening";
                     app.state::<VoiceControl>().publish(&app, phase, true);
                 } else if event == "wake" && phase == "listening" && Instant::now() >= cooldown {

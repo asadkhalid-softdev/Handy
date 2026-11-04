@@ -490,6 +490,7 @@ fn run(
     let mut cooldown = Instant::now();
     let mut detector_started = Instant::now();
     let mut detector_ready = false;
+    let mut detector_suspended = false;
     let _ = tx.send(Message::Configure(initial));
     loop {
         let message = match rx.recv_timeout(Duration::from_millis(100)) {
@@ -503,6 +504,7 @@ fn run(
                 generation += 1;
                 detector.take();
                 detector_ready = false;
+                detector_suspended = false;
                 if let Some(key) = registered.take() {
                     let _ = app.global_shortcut().unregister(key);
                 }
@@ -642,8 +644,25 @@ fn run(
         while let Ok(event) = wake_rx.try_recv() {
             match event {
                 WakeMessage::Detector(g, line) if g == generation => {
-                    if line == "ready" {
+                    if line == "starting" {
+                        detector_ready = false;
+                        detector_suspended = false;
+                        detector_started = Instant::now();
+                        if session.is_none() {
+                            update(&app, |s| s.phase = "starting".into());
+                        }
+                    } else if line == "suspended" {
+                        detector_ready = false;
+                        detector_suspended = true;
+                        endpoint(None);
+                        if let Some(token) = session.take() {
+                            app.state::<TranscriptionCoordinator>().cancel_voice(token);
+                        }
+                        processing = false;
+                        update(&app, |s| s.phase = "suspended".into());
+                    } else if line == "ready" {
                         detector_ready = true;
+                        detector_suspended = false;
                         if session.is_none() {
                             update(&app, |s| s.phase = "listening".into());
                         }
@@ -656,6 +675,7 @@ fn run(
                     }
                 }
                 WakeMessage::DetectorError(g, error) if g == generation => {
+                    generation += 1;
                     detector.take();
                     detector_ready = false;
                     config.listening = false;
@@ -676,7 +696,9 @@ fn run(
         }
         if let Some(child) = detector.as_mut() {
             if !matches!(child.0.try_wait(), Ok(None))
-                || (!detector_ready && detector_started.elapsed() > Duration::from_secs(20))
+                || (!detector_ready
+                    && !detector_suspended
+                    && detector_started.elapsed() > Duration::from_secs(20))
             {
                 let _ = wake_tx.send(WakeMessage::DetectorError(
                     generation,

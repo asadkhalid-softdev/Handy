@@ -14,6 +14,7 @@
     "recheck": "Check again",
     "discard": "Discard retained message",
     "phase": {
+      "suspended": "Waiting for Windows unlock",
       "disabled": "Codex-Talk disabled",
       "paused": "Wake listening paused",
       "starting": "Starting wake listener",
@@ -1061,6 +1062,7 @@
     "waitForPink": "Speak when the indicator turns pink",
     "micReleased": "Background listening is off",
     "phase": {
+      "suspended": "Waiting for Windows unlock",
       "paused": "Microphone paused",
       "starting": "Starting microphone…",
       "arming": "Preparing to record…",

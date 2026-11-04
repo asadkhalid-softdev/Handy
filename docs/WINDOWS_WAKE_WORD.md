@@ -38,6 +38,16 @@ disabled. It uses the selected output device and feedback volume (at reduced
 loudness); setting that volume to zero silences it. Playback failure does not
 prevent dictation.
 
+## Locking Windows
+
+Windows+L, switching users and disconnecting a desktop session suspend wake
+recognition. Both listeners show **Waiting for Windows unlock**, release their
+wake microphones and cancel any voice-owned recording. Their listening
+preferences stay enabled. Recognition restarts automatically when the session
+is active and unlocked again. A manually paused or disabled listener remains
+paused; this behavior does not turn it on. Codex work already accepted by the
+selected thread continues independently.
+
 ## Limits and microphone behavior
 
 - Windows only, with an installed English **desktop speech recognition** engine.
@@ -73,6 +83,7 @@ cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked
 cargo test --manifest-path src-tauri/Cargo.toml --locked --lib
 powershell -NoProfile -File scripts/test-wake-detector.ps1
+powershell -NoProfile -File scripts/test-wake-session.ps1
 bun run tauri build --no-bundle
 ```
 
