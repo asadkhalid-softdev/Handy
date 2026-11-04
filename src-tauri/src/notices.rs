@@ -31,6 +31,7 @@ pub enum NoticeLevel {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum NoticeSource {
+    WakeWord,
     Dictation,
     File,
     Model,
@@ -39,6 +40,7 @@ pub enum NoticeSource {
 /// The frontend maps each code to its text in `src/lib/notices.ts`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub enum NoticeCode {
+    WakeWordFailed,
     TranscriptionFailed,
     PasteFailed,
     NoMicrophone,
@@ -53,7 +55,8 @@ pub enum NoticeCode {
 impl NoticeCode {
     fn level(self) -> NoticeLevel {
         match self {
-            Self::TranscriptionFailed
+            Self::WakeWordFailed
+            | Self::TranscriptionFailed
             | Self::PasteFailed
             | Self::NoMicrophone
             | Self::MicPermissionDenied
@@ -67,6 +70,7 @@ impl NoticeCode {
     /// The same `errors.*Title` string the frontend shows (see `build.rs`).
     pub fn tray_title(self, strings: &TrayStrings) -> &str {
         match self {
+            Self::WakeWordFailed => &strings.wake_word_failed_title,
             Self::TranscriptionFailed => &strings.transcription_failed_title,
             Self::PasteFailed => &strings.paste_failed_title,
             Self::NoMicrophone => &strings.no_input_device_title,

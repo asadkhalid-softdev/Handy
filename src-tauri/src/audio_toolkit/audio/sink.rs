@@ -185,6 +185,11 @@ impl Sink for CaptureSink {
         }
 
         if self.policy == VadPolicy::Disabled {
+            if !real.is_empty()
+                && real.iter().map(|x| x * x).sum::<f32>() / real.len() as f32 > 0.000_144
+            {
+                crate::voice_control::speech_frame();
+            }
             Self::emit(&mut self.samples, &self.on_audio, real);
             return;
         }
@@ -197,7 +202,10 @@ impl Sink for CaptureSink {
             .push_frame(chunk.samples)
             .unwrap_or(VadFrame::Speech(chunk.samples))
         {
-            VadFrame::Speech(frame) => Self::emit(&mut self.samples, &self.on_audio, frame),
+            VadFrame::Speech(frame) => {
+                crate::voice_control::speech_frame();
+                Self::emit(&mut self.samples, &self.on_audio, frame);
+            }
             VadFrame::Noise => {}
         }
     }

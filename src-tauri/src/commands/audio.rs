@@ -172,6 +172,9 @@ pub fn open_microphone_privacy_settings() -> Result<(), String> {
 pub async fn update_microphone_mode(app: AppHandle, always_on: bool) -> Result<(), String> {
     // Update settings (fast, stays inline)
     let mut settings = get_settings(&app);
+    if always_on && settings.voice_control.enabled {
+        return Err("Pause wake-phrase listening before enabling Always-on Microphone.".into());
+    }
     settings.always_on_microphone = always_on;
     write_settings(&app, settings);
 

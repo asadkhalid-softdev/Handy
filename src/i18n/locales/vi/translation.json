@@ -951,7 +951,8 @@
     "filePostProcessFailedTitle": "Đã chép lời không qua xử lý sau",
     "filePostProcessFailed": "Xử lý sau chưa hoàn tất nên bản chép lời được lưu nguyên trạng.",
     "fileTranscriptionFailedTitle": "Phiên âm tệp thất bại",
-    "transcriptionFailedTitle": "Phiên âm thất bại"
+    "transcriptionFailedTitle": "Phiên âm thất bại",
+    "wakeWordFailedTitle": "Wake-phrase Listening Failed"
   },
   "notices": {
     "errorOne": "{{n}} lỗi",
@@ -988,5 +989,35 @@
     "learnMore": "Cách khắc phục",
     "recorderBlocked": "Hiện không thể ghi phím tắt — Secure Input của macOS đang chặn các sự kiện phím. Hãy xử lý cảnh báo Secure Input trước.",
     "dismiss": "Bỏ qua"
+  },
+  "voiceControl": {
+    "title": "Wake-phrase dictation",
+    "description": "Listen locally for an English wake phrase using the default Windows microphone. Pause releases background listening; keyboard dictation remains available.",
+    "instructions": "Say the wake phrase, wait for the pink recording indicator, then dictate. Silence ends the recording and pastes the result.",
+    "enable": "Listen for wake phrase",
+    "wakePhrase": "Wake phrase",
+    "silenceTimeout": "Finish after silence",
+    "seconds_one": "{{count}} second",
+    "seconds_other": "{{count}} seconds",
+    "pauseToEdit": "Pause listening before changing the phrase or timeout.",
+    "save": "Save",
+    "showPanel": "Show floating control",
+    "move": "Drag to move voice control",
+    "pause": "Pause microphone listening",
+    "resume": "Resume microphone listening",
+    "openSettings": "Open Handy settings",
+    "checkSettings": "Check voice settings for details",
+    "sayPhrase": "Say “{{phrase}}”",
+    "waitForPink": "Speak when the indicator turns pink",
+    "micReleased": "Background listening is off",
+    "phase": {
+      "paused": "Microphone paused",
+      "starting": "Starting microphone…",
+      "arming": "Preparing to record…",
+      "listening": "Listening for wake phrase",
+      "recording": "Recording dictation",
+      "processing": "Finishing dictation…",
+      "error": "Listening stopped"
+    }
   }
 }

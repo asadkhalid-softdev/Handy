@@ -10,6 +10,9 @@ interface NoticeDisplay {
 
 // See "Error notices" in AGENTS.md for how to add a code.
 const NOTICE_DISPLAY: Record<NoticeCode, NoticeDisplay> = {
+  WakeWordFailed: {
+    title: "errors.wakeWordFailedTitle",
+  },
   TranscriptionFailed: {
     title: "errors.transcriptionFailedTitle",
   },

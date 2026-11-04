@@ -31,6 +31,7 @@ mod transcription_hook;
 mod tray;
 mod tray_i18n;
 mod utils;
+mod voice_control;
 pub mod webkit_renderer;
 
 pub use cli::CliArgs;
@@ -395,6 +396,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
 
     // Create the recording overlay window (hidden by default)
     utils::create_recording_overlay(app_handle);
+    voice_control::initialize(app_handle);
 }
 
 #[tauri::command]
@@ -682,6 +684,9 @@ pub fn run(cli_args: CliArgs) {
 
     let specta_builder = Builder::<tauri::Wry>::new()
         .commands(collect_commands![
+            voice_control::get_voice_control_status,
+            voice_control::configure_voice_control,
+            voice_control::show_voice_control,
             shortcut::change_binding,
             shortcut::reset_binding,
             shortcut::change_shortcut_activation_setting,
@@ -826,13 +831,20 @@ pub fn run(cli_args: CliArgs) {
             notices::NoticesChanged,
         ]);
 
-    #[cfg(debug_assertions)] // <- Only export on non-release builds
-    specta_builder
-        .export(
-            Typescript::default().bigint(BigIntExportBehavior::Number),
-            "../src/bindings.ts",
-        )
-        .expect("Failed to export typescript bindings");
+    #[cfg(debug_assertions)]
+    {
+        // A standalone preview can be launched from any working directory.
+        // Regenerate bindings only when its source checkout still exists.
+        let bindings = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.ts");
+        if bindings.parent().is_some_and(|parent| parent.is_dir()) {
+            specta_builder
+                .export(
+                    Typescript::default().bigint(BigIntExportBehavior::Number),
+                    bindings,
+                )
+                .expect("Failed to export typescript bindings");
+        }
+    }
 
     let invoke_handler = specta_builder.invoke_handler();
 
@@ -1172,6 +1184,7 @@ pub fn run(cli_args: CliArgs) {
     // `app` is only used by the macOS arm.
     #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
     app.run(|app, event| match &event {
+        tauri::RunEvent::Exit => voice_control::shutdown(app),
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Reopen { .. } => {
             // Fired when the already-running bundle is launched again from

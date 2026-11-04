@@ -199,6 +199,9 @@ enum Effect {
 /// Commands processed sequentially by the coordinator thread.
 enum Command {
     Input(InputEvent),
+    VoiceStart { token: u64, reply: Sender<bool> },
+    VoiceStop { token: u64 },
+    VoiceCancel { token: u64 },
     Cancel { recording_was_active: bool },
     ProcessingFinished,
 }
@@ -246,6 +249,7 @@ fn classify_ptt_event(
 /// * hold-or-toggle — a release after a long hold stops; a release after a
 ///   short tap locks the session, and the next press stops
 struct CoordinatorState {
+    voice_token: Option<u64>,
     stage: Stage,
     hold: Option<Hold>,
     last_press: Option<Instant>,
@@ -256,6 +260,7 @@ struct CoordinatorState {
 impl CoordinatorState {
     fn new() -> Self {
         Self {
+            voice_token: None,
             stage: Stage::Idle,
             hold: None,
             last_press: None,
@@ -493,6 +498,7 @@ impl CoordinatorState {
     }
 
     fn on_cancel(&mut self, recording_was_active: bool) {
+        self.voice_token = None;
         self.pending_release = None;
         // An explicit cancel abandons any remembered start too — the user
         // asked for silence, not a deferred recording.
@@ -507,6 +513,7 @@ impl CoordinatorState {
     }
 
     fn on_processing_finished(&mut self) -> Option<Effect> {
+        self.voice_token = None;
         self.stage = Stage::Idle;
         self.hold = None;
         let pending = self.pending_press.take()?;
@@ -526,6 +533,7 @@ impl CoordinatorState {
     /// whether recording actually began (microphone access can be denied).
     fn on_start_result(&mut self, binding_id: &str, started: bool) {
         if !started && matches!(&self.stage, Stage::Recording(id) if id == binding_id) {
+            self.voice_token = None;
             self.stage = Stage::Idle;
             self.hold = None;
         }
@@ -541,6 +549,7 @@ impl CoordinatorState {
         pressed_at: Instant,
         locked: bool,
     ) -> Effect {
+        self.voice_token = None;
         self.stage = Stage::Recording(binding_id.clone());
         self.hold = Some(Hold { pressed_at, locked });
         Effect::Start {
@@ -556,6 +565,29 @@ impl CoordinatorState {
             binding_id,
             hotkey_string,
         }
+    }
+
+    // Wake events never toggle or queue behind a manual recording. Tokens
+    // prevent stale silence timeouts or Pause from affecting later sessions.
+    fn on_voice_start(&mut self, token: u64) -> Option<Effect> {
+        if self.stage != Stage::Idle {
+            return None;
+        }
+        let effect = self.begin_recording(
+            "transcribe".into(),
+            "wake-word".into(),
+            Instant::now(),
+            true,
+        );
+        self.voice_token = Some(token);
+        Some(effect)
+    }
+
+    fn on_voice_stop(&mut self, token: u64) -> Option<Effect> {
+        if self.voice_token != Some(token) || self.stage != Stage::Recording("transcribe".into()) {
+            return None;
+        }
+        Some(self.begin_processing("transcribe".into(), "wake-word".into()))
     }
 }
 
@@ -605,6 +637,28 @@ impl TranscriptionCoordinator {
 
                     let was_locked = state.is_recording_locked();
                     match cmd {
+                        Command::VoiceStart { token, reply } => {
+                            let file_job_active = app
+                                .state::<Arc<crate::managers::transcription::TranscriptionManager>>(
+                                )
+                                .job_active();
+                            if !file_job_active {
+                                if let Some(effect) = state.on_voice_start(token) {
+                                    run_effect(&app, &mut state, effect);
+                                }
+                            }
+                            let _ = reply.send(state.voice_token == Some(token));
+                        }
+                        Command::VoiceStop { token } => {
+                            if let Some(effect) = state.on_voice_stop(token) {
+                                run_effect(&app, &mut state, effect);
+                            }
+                        }
+                        Command::VoiceCancel { token } => {
+                            if state.voice_token == Some(token) {
+                                crate::utils::cancel_current_operation(&app);
+                            }
+                        }
                         Command::Input(input) => {
                             if let Some(effect) = state.on_input(input, Instant::now()) {
                                 run_effect(&app, &mut state, effect);
@@ -620,8 +674,12 @@ impl TranscriptionCoordinator {
                             if busy {
                                 emit_recording_phase(&app, RecordingPhase::Cancelled);
                             }
+                            if recording_was_active {
+                                crate::voice_control::pipeline_finished(&app);
+                            }
                         }
                         Command::ProcessingFinished => {
+                            crate::voice_control::pipeline_finished(&app);
                             if let Some(effect) = state.on_processing_finished() {
                                 run_effect(&app, &mut state, effect);
                             }
@@ -699,6 +757,22 @@ impl TranscriptionCoordinator {
         }
     }
 
+    pub fn start_voice(&self, token: u64) -> bool {
+        let (reply, result) = mpsc::channel();
+        self.tx.send(Command::VoiceStart { token, reply }).is_ok()
+            && result
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap_or(false)
+    }
+
+    pub fn stop_voice(&self, token: u64) {
+        let _ = self.tx.send(Command::VoiceStop { token });
+    }
+
+    pub fn cancel_voice(&self, token: u64) {
+        let _ = self.tx.send(Command::VoiceCancel { token });
+    }
+
     pub fn notify_cancel(&self, recording_was_active: bool) {
         if self
             .tx
@@ -768,6 +842,45 @@ fn stop(app: &AppHandle, binding_id: &str, hotkey_string: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn voice_start_never_toggles_or_queues_behind_another_session() {
+        let mut state = CoordinatorState::new();
+        assert!(matches!(
+            state.on_voice_start(1),
+            Some(Effect::Start { .. })
+        ));
+        assert!(state.on_voice_start(2).is_none());
+        assert!(state.on_voice_stop(2).is_none());
+        assert!(matches!(state.on_voice_stop(1), Some(Effect::Stop { .. })));
+        assert!(state.on_voice_start(3).is_none());
+        assert!(state.pending_press.is_none());
+    }
+
+    #[test]
+    fn old_voice_deadline_cannot_stop_a_new_manual_recording() {
+        let mut state = CoordinatorState::new();
+        state.on_voice_start(1);
+        state.on_voice_stop(1);
+        state.on_processing_finished();
+        state.begin_recording(
+            "transcribe".into(),
+            "keyboard".into(),
+            Instant::now(),
+            false,
+        );
+        assert!(state.on_voice_stop(1).is_none());
+        assert_eq!(state.voice_token, None);
+    }
+
+    #[test]
+    fn rejected_microphone_start_releases_voice_ownership() {
+        let mut state = CoordinatorState::new();
+        state.on_voice_start(1);
+        state.on_start_result("transcribe", false);
+        assert_eq!(state.voice_token, None);
+        assert_eq!(state.stage, Stage::Idle);
+    }
 
     #[test]
     fn push_to_talk_release_while_recording_defers_release() {

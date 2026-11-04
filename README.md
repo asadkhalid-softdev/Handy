@@ -1,5 +1,10 @@
 # Handy
 
+This personal **Handy Voice** fork adds offline English wake-phrase dictation
+and a movable Windows microphone control with pause/resume. See
+[Windows wake-phrase setup and development](docs/WINDOWS_WAKE_WORD.md).
+Official automatic updates are disabled in this fork.
+
 [![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/WVBeWsNXK4)
 
 **A free, open source, and extensible speech-to-text application that works completely offline.**
