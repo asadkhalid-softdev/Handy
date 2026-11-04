@@ -4,8 +4,8 @@ set -euo pipefail
 owner=asadkhalid-softdev
 fork="$owner/Handy"
 branch=$(git branch --show-current)
-if [[ "$branch" != feat/windows-wake-word-control ]]; then
-  echo "Switch to feat/windows-wake-word-control before publishing." >&2
+if [[ "$branch" != main && "$branch" != feat/windows-wake-word-control ]]; then
+  echo "Switch to main or feat/windows-wake-word-control before publishing." >&2
   exit 1
 fi
 if [[ $(gh api user --jq .login) != "$owner" ]]; then

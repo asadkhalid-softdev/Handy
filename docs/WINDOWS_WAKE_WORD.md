@@ -94,7 +94,7 @@ Handy (`com.pais.handy`). Do not run both with the same recording shortcut.
 Official automatic updates are disabled in the fork to preserve these changes.
 Models in the shared Hugging Face cache can be reused.
 
-## Publish the local branch
+## Publish the personal fork
 
 The intended GitHub owner is **asadkhalid-softdev**. No credentials are included.
 After signing in with that account, run this from the repository root:
@@ -104,7 +104,11 @@ gh auth login --hostname github.com --git-protocol https --web
 bash scripts/publish-voice-fork.sh
 ```
 
+Development now uses `main` on the personal fork. `origin` points to
+`asadkhalid-softdev/Handy`; `upstream` points to `cjpais/Handy`. The initial
+`feat/windows-wake-word-control` branch remains available as a checkpoint.
+
 The script verifies the authenticated account and fork parent before changing
-remotes or pushing the current feature branch. It never pushes to cjpais/Handy
+remotes or pushing the current main or feature branch. It never pushes to cjpais/Handy
 and does not open a pull request. Upstream currently has a feature freeze; a
 future upstream proposal must follow its contribution and discussion requirements.
