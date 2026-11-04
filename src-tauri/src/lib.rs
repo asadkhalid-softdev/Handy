@@ -687,6 +687,7 @@ pub fn run(cli_args: CliArgs) {
             voice_control::get_voice_control_status,
             voice_control::configure_voice_control,
             voice_control::show_voice_control,
+            voice_control::open_wake_talk,
             shortcut::change_binding,
             shortcut::reset_binding,
             shortcut::change_shortcut_activation_setting,

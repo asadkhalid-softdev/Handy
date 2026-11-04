@@ -14,6 +14,8 @@ use tauri::{AppHandle, Emitter, Listener, Manager};
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 #[serde(default)]
 pub struct VoiceControlSettings {
+    /// Master feature switch; pausing listening does not disable the feature.
+    pub feature_enabled: bool,
     pub enabled: bool,
     pub phrase: String,
     pub silence_ms: u64,
@@ -24,6 +26,7 @@ pub struct VoiceControlSettings {
 impl Default for VoiceControlSettings {
     fn default() -> Self {
         Self {
+            feature_enabled: true,
             enabled: false,
             phrase: "hey handy".into(),
             silence_ms: 2000,
@@ -32,10 +35,17 @@ impl Default for VoiceControlSettings {
     }
 }
 
+impl VoiceControlSettings {
+    fn listening_enabled(&self) -> bool {
+        self.feature_enabled && self.enabled
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct VoiceStatus {
+    pub feature_enabled: bool,
     pub enabled: bool,
-    /// paused, starting, listening, recording, processing, error
+    /// disabled, paused, starting, listening, arming, recording, processing, error
     pub phase: String,
     pub phrase: String,
     pub silence_ms: u64,
@@ -44,8 +54,14 @@ pub struct VoiceStatus {
 impl VoiceStatus {
     fn new(settings: &VoiceControlSettings) -> Self {
         Self {
+            feature_enabled: settings.feature_enabled,
             enabled: false,
-            phase: "paused".into(),
+            phase: if settings.feature_enabled {
+                "paused"
+            } else {
+                "disabled"
+            }
+            .into(),
             phrase: settings.phrase.clone(),
             silence_ms: settings.silence_ms,
         }
@@ -111,14 +127,16 @@ pub fn shutdown(app: &AppHandle) {
 
 fn validate(settings: &VoiceControlSettings) -> Result<(), String> {
     let words = settings.phrase.split_whitespace().count();
-    if !(2..=5).contains(&words)
+    if !(1..=5).contains(&words)
         || settings.phrase.len() > 60
         || !settings
             .phrase
             .chars()
             .all(|c| c.is_ascii_alphabetic() || c == ' ' || c == '\'')
     {
-        return Err("Use an English wake phrase of two to five words (letters and spaces).".into());
+        return Err(
+            "Use an English wake word or phrase of one to five words (letters and spaces).".into(),
+        );
     }
     if !(800..=10_000).contains(&settings.silence_ms) {
         return Err("Silence timeout must be between 800 and 10000 milliseconds.".into());
@@ -140,6 +158,7 @@ pub fn get_voice_control_status(app: AppHandle) -> Result<VoiceStatus, String> {
 #[specta::specta]
 pub fn configure_voice_control(
     app: AppHandle,
+    feature_enabled: bool,
     enabled: bool,
     phrase: String,
     silence_ms: u64,
@@ -149,7 +168,8 @@ pub fn configure_voice_control(
     }
     let mut settings = crate::settings::get_settings(&app);
     let config = VoiceControlSettings {
-        enabled,
+        feature_enabled,
+        enabled: enabled && feature_enabled,
         phrase: phrase
             .split_whitespace()
             .collect::<Vec<_>>()
@@ -161,7 +181,7 @@ pub fn configure_voice_control(
     validate(&config)?;
     // The detector owns the idle microphone. Keep the transcription recorder
     // on demand so Pause really releases background microphone capture.
-    if enabled && settings.always_on_microphone {
+    if config.enabled && settings.always_on_microphone {
         return Err("Turn off Always-on Microphone before enabling wake-phrase control.".into());
     }
     settings.voice_control = config.clone();
@@ -175,10 +195,24 @@ pub fn configure_voice_control(
 #[tauri::command]
 #[specta::specta]
 pub fn show_voice_control(app: AppHandle) -> Result<(), String> {
+    if !crate::settings::get_settings(&app)
+        .voice_control
+        .feature_enabled
+    {
+        return Err("Enable Wake-Talk to show the floating control.".into());
+    }
     let window = app
         .get_webview_window("voice_control")
         .ok_or("Voice control is available on Windows only")?;
     window.show().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn open_wake_talk(app: AppHandle) -> Result<(), String> {
+    crate::show_main_window(&app);
+    app.emit_to("main", "show-wake-talk", ())
+        .map_err(|e| e.to_string())
 }
 
 pub fn initialize(app: &AppHandle) {
@@ -312,13 +346,28 @@ fn run(
                     app.state::<TranscriptionCoordinator>().cancel_voice(token);
                 }
                 config = next;
-                enabled = config.enabled;
+                enabled = config.listening_enabled();
                 if let Ok(mut status) = app.state::<VoiceControl>().status.lock() {
+                    status.feature_enabled = config.feature_enabled;
                     status.phrase = config.phrase.clone();
                     status.silence_ms = config.silence_ms;
                 }
+                if let Some(window) = app.get_webview_window("voice_control") {
+                    let result = if config.feature_enabled {
+                        window.show()
+                    } else {
+                        window.hide()
+                    };
+                    if let Err(error) = result {
+                        report_error(&app, &error.to_string());
+                    }
+                }
                 if !enabled {
-                    phase = "paused";
+                    phase = if config.feature_enabled {
+                        "paused"
+                    } else {
+                        "disabled"
+                    };
                     app.state::<VoiceControl>().publish(&app, phase, false);
                     continue;
                 }
@@ -451,7 +500,7 @@ fn create_window(app: &AppHandle, settings: &VoiceControlSettings) -> Result<(),
         tauri::WebviewUrl::App("src/voice-control/index.html".into()),
     )
     .title("Handy Voice Control")
-    .inner_size(316.0, 76.0)
+    .inner_size(128.0, 58.0)
     .decorations(false)
     .transparent(true)
     .resizable(false)
@@ -459,6 +508,7 @@ fn create_window(app: &AppHandle, settings: &VoiceControlSettings) -> Result<(),
     .skip_taskbar(true)
     .focused(false)
     .focusable(false)
+    .visible(settings.feature_enabled)
     .build()
     .map_err(|e| e.to_string())?;
     let size = window.outer_size().map_err(|e| e.to_string())?;
@@ -507,15 +557,40 @@ mod tests {
     fn validates_config_without_interpreting_phrases_as_code() {
         let mut settings = VoiceControlSettings::default();
         assert!(validate(&settings).is_ok());
-        for phrase in [
-            "hey",
-            "hey; Start-Process calc",
-            "$(whoami)",
-            "hey\nhandy",
-            "",
-        ] {
+        for phrase in ["hey; Start-Process calc", "$(whoami)", "hey\nhandy", ""] {
             settings.phrase = phrase.into();
             assert!(validate(&settings).is_err(), "{phrase:?}");
         }
+    }
+
+    #[test]
+    fn a_single_wake_word_is_supported() {
+        let settings = VoiceControlSettings {
+            phrase: "computer".into(),
+            ..Default::default()
+        };
+        assert!(validate(&settings).is_ok());
+    }
+
+    #[test]
+    fn existing_settings_keep_the_feature_and_listening_preference() {
+        let settings: VoiceControlSettings =
+            serde_json::from_str(r#"{"enabled":true,"phrase":"hey handy"}"#).unwrap();
+        assert!(settings.feature_enabled);
+        assert!(settings.listening_enabled());
+    }
+
+    #[test]
+    fn disabled_feature_cannot_listen_even_with_a_stale_listening_preference() {
+        let settings = VoiceControlSettings {
+            feature_enabled: false,
+            enabled: true,
+            ..Default::default()
+        };
+        assert!(!settings.listening_enabled());
+        let status = VoiceStatus::new(&settings);
+        assert_eq!(status.phase, "disabled");
+        assert!(!status.feature_enabled);
+        assert!(!status.enabled);
     }
 }

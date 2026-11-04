@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { platform } from "@tauri-apps/plugin-os";
+import { listen } from "@tauri-apps/api/event";
 import {
   checkAccessibilityPermission,
   checkMicrophonePermission,
@@ -85,6 +86,14 @@ function App() {
   const [currentSection, setCurrentSection] =
     useState<SidebarSection>("general");
   const showHistory = useCallback(() => setCurrentSection("history"), []);
+  useEffect(() => {
+    const unlisten = listen("show-wake-talk", () =>
+      setCurrentSection("wakeTalk"),
+    );
+    return () => {
+      void unlisten.then((stop) => stop());
+    };
+  }, []);
   const { settings, updateSetting } = useSettings();
   const direction = getLanguageDirection(i18n.language);
   const refreshAudioDevices = useSettingsStore(

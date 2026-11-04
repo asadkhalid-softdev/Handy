@@ -7,21 +7,26 @@ separate from Handy's speech-to-text models and does not send audio to a server.
 
 ## Use
 
-1. Launch Handy Voice. The floating control starts paused on a fresh install.
-2. In General → Wake-phrase dictation, choose a phrase (default: “hey handy”)
-   and a silence timeout. Changes require listening to be paused.
-3. Press Play in the floating control. It displays “Listening for wake phrase”
-   only after Windows has opened its recognizer.
+1. Launch Handy Voice and open the **Wake-Talk** tab. The floating control
+   starts paused on a fresh install.
+2. Enable Wake-Talk, choose a wake word or phrase (default: “hey handy”)
+   and a silence timeout, then save. Changes require listening to be paused.
+3. Press Play in Wake-Talk or the floating control. Hover over its play/pause
+   icon to check the listening state.
 4. Say “hey handy”, wait for the existing recording indicator to turn pink,
    then dictate. The wake phrase is not included in the transcription.
 5. After silence, Handy finishes transcription and uses the configured paste
    method. For Tabby, use Shift+Insert. Automatic Enter remains off by default.
 
-Drag the grip to move the control; its screen position is saved. A saved
+The floating control contains only drag, play/pause and settings icons. Its
+settings icon opens Wake-Talk directly. Drag the grip to move the control;
+its screen position is saved. A saved
 position outside the available monitor work areas is reset at the next launch.
-The settings button opens Handy; it does not hide the control.
+Disabling **Enable Wake-Talk** stops listening and hides the floating control.
+Re-enable it from Wake-Talk to show the control again, with listening paused.
 
-Pause kills the wake detector and cancels any voice-owned recording or pending
+Pause leaves the feature and floating control available, but kills the wake
+detector and cancels any voice-owned recording or pending
 transcription. A recording already pasted cannot be recalled. Pause is saved
 across restarts and login. Keyboard dictation still works on explicit shortcut
 presses while background listening is paused.

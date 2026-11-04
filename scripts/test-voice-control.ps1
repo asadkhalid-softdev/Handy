@@ -13,6 +13,8 @@ public static class HandyVoiceWindowProbe {
     [DllImport("user32.dll", EntryPoint="GetWindowLongW")]
     public static extern int GetWindowLong(IntPtr hwnd, int index);
     public static IntPtr Find() { return FindWindow(null, "Handy Voice Control"); }
+    public static IntPtr FindMain() { return FindWindow(null, "Handy"); }
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
 }
 '@
 $rootPath = Split-Path $PSScriptRoot -Parent
@@ -31,22 +33,47 @@ try {
     }
     if ($hwnd -eq [IntPtr]::Zero) { throw 'Floating control window was not created.' }
     $root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
-    function Wait-Label([string]$label) {
+    function Wait-Label([string]$label, [bool]$requireToggle = $false) {
         $until = [DateTime]::UtcNow.AddSeconds(15)
         while ([DateTime]::UtcNow -lt $until) {
             $condition = New-Object System.Windows.Automation.PropertyCondition(
                 [System.Windows.Automation.AutomationElement]::NameProperty, $label)
+            if ($requireToggle) {
+                $toggle = New-Object System.Windows.Automation.PropertyCondition(
+                    [System.Windows.Automation.AutomationElement]::IsTogglePatternAvailableProperty, $true)
+                $condition = New-Object System.Windows.Automation.AndCondition($condition, $toggle)
+            }
             $found = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
             if ($null -ne $found) { return $found }
             Start-Sleep -Milliseconds 200
         }
         throw "Control did not reach state: $label (this test requires an English UI)."
     }
-    $null = Wait-Label 'Microphone paused'
+    $null = Wait-Label 'Resume microphone listening'
     $style = [HandyVoiceWindowProbe]::GetWindowLong($hwnd, -20)
     if (!($style -band 8)) { throw 'Control is not always on top.' }
     if (!($style -band 134217728)) { throw 'Control could steal the typing focus.' }
-    Write-Output 'PASS: visible, paused, topmost control without activation'
+    if ($root.Current.BoundingRectangle.Width -gt 3 * $root.Current.BoundingRectangle.Height) {
+        throw 'Floating control is not compact.'
+    }
+    Write-Output 'PASS: compact, paused, topmost control without activation'
+
+    $floatingRoot = $root
+    $gear = Wait-Label 'Open Wake-Talk settings'
+    $gear.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    Start-Sleep -Milliseconds 500
+    $mainWindow = [HandyVoiceWindowProbe]::FindMain()
+    if ($mainWindow -eq [IntPtr]::Zero) { throw 'Settings did not open the main window.' }
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle($mainWindow)
+    $feature = Wait-Label 'Enable Wake-Talk' $true
+    $feature.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
+    $null = Wait-Label 'Wake-Talk disabled'
+    if ([HandyVoiceWindowProbe]::IsWindowVisible($hwnd)) { throw 'Disabled feature left the control visible.' }
+    $feature.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
+    $null = Wait-Label 'Microphone paused'
+    if (![HandyVoiceWindowProbe]::IsWindowVisible($hwnd)) { throw 'Enabling the feature did not restore the control.' }
+    $root = $floatingRoot
+    Write-Output 'PASS: settings opens Wake-Talk; feature switch hides/restores the control'
     if ($ExerciseMicrophone) {
         $resume = Wait-Label 'Resume microphone listening'
         $resume.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()

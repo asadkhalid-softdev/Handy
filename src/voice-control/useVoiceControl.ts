@@ -3,9 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 export interface VoiceStatus {
+  feature_enabled: boolean;
   enabled: boolean;
   phase:
     | "paused"
+    | "disabled"
     | "starting"
     | "listening"
     | "arming"
@@ -47,12 +49,18 @@ export function useVoiceControl() {
   }, []);
 
   const configure = useCallback(
-    async (enabled: boolean, phrase?: string, silenceMs?: number) => {
+    async (
+      enabled: boolean,
+      phrase?: string,
+      silenceMs?: number,
+      featureEnabled?: boolean,
+    ) => {
       if (!status || pending) return;
       setPending(true);
       setError(undefined);
       try {
         await invoke("configure_voice_control", {
+          featureEnabled: featureEnabled ?? status.feature_enabled,
           enabled,
           phrase: phrase ?? status.phrase,
           silenceMs: silenceMs ?? status.silence_ms,

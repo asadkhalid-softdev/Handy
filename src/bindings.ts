@@ -13,9 +13,9 @@ async getVoiceControlStatus() : Promise<Result<VoiceStatus, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async configureVoiceControl(enabled: boolean, phrase: string, silenceMs: number) : Promise<Result<null, string>> {
+async configureVoiceControl(featureEnabled: boolean, enabled: boolean, phrase: string, silenceMs: number) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("configure_voice_control", { enabled, phrase, silenceMs }) };
+    return { status: "ok", data: await TAURI_INVOKE("configure_voice_control", { featureEnabled, enabled, phrase, silenceMs }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -24,6 +24,14 @@ async configureVoiceControl(enabled: boolean, phrase: string, silenceMs: number)
 async showVoiceControl() : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("show_voice_control") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async openWakeTalk() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("open_wake_talk") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1570,14 +1578,18 @@ export type TranscriptionOutcome =
 "failed"
 export type TypingTool = "auto" | "wtype" | "kwtype" | "dotool" | "ydotool" | "xdotool"
 export type VadBackend = "silero" | "earshot"
-export type VoiceControlSettings = { enabled: boolean; phrase: string; silence_ms: number;
+export type VoiceControlSettings = {
+/**
+ * Master feature switch; pausing listening does not disable the feature.
+ */
+feature_enabled: boolean; enabled: boolean; phrase: string; silence_ms: number;
 /**
  * Physical screen coordinates, including negative multi-monitor positions.
  */
 position: [number, number] | null }
-export type VoiceStatus = { enabled: boolean;
+export type VoiceStatus = { feature_enabled: boolean; enabled: boolean;
 /**
- * paused, starting, listening, recording, processing, error
+ * disabled, paused, starting, listening, arming, recording, processing, error
  */
 phase: string; phrase: string; silence_ms: number }
 export type WindowsMicrophonePermissionStatus = { supported: boolean; overall_access: PermissionAccess; device_access: PermissionAccess; app_access: PermissionAccess; desktop_app_access: PermissionAccess }

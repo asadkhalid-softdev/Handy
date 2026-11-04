@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { GripVertical, Mic, MicOff, Pause, Play, Settings } from "lucide-react";
+import { GripVertical, Pause, Play, Settings } from "lucide-react";
 import { useVoiceControl } from "./useVoiceControl";
 import "@/i18n";
 import "./style.css";
@@ -13,12 +13,13 @@ function VoiceControl() {
   const { status, pending, error, configure } = useVoiceControl();
   const phase = status?.phase ?? "starting";
   const enabled = status?.enabled ?? false;
+  const featureEnabled = status?.feature_enabled ?? false;
   const [windowError, setWindowError] = React.useState(false);
   const reportWindowError = () => setWindowError(true);
   return (
     <main
-      className={`voice-panel ${phase}`}
-      aria-label={t("voiceControl.title")}
+      className={`voice-panel ${phase} ${error || windowError ? "has-error" : ""}`}
+      aria-label={t("sidebar.wakeTalk")}
     >
       <button
         className="voice-grip"
@@ -33,26 +34,14 @@ function VoiceControl() {
       >
         <GripVertical size={16} aria-hidden="true" />
       </button>
-      <span className="voice-mic" aria-hidden="true">
-        {enabled ? <Mic size={19} /> : <MicOff size={19} />}
+      <span className="sr-only" aria-live="polite" role="status">
+        {t(`voiceControl.phase.${phase}`)}
       </span>
-      <div className="voice-copy" aria-live="polite" role="status">
-        <strong>{t(`voiceControl.phase.${phase}`)}</strong>
-        <span title={error}>
-          {error || windowError
-            ? t("voiceControl.checkSettings")
-            : phase === "listening"
-              ? t("voiceControl.sayPhrase", { phrase: status?.phrase })
-              : enabled
-                ? t("voiceControl.waitForPink")
-                : t("voiceControl.micReleased")}
-        </span>
-      </div>
       <button
         className={`voice-toggle ${enabled ? "active" : ""}`}
-        disabled={!status || pending}
+        disabled={!status || !featureEnabled || pending}
         aria-label={t(enabled ? "voiceControl.pause" : "voiceControl.resume")}
-        title={t(enabled ? "voiceControl.pause" : "voiceControl.resume")}
+        title={`${t(`voiceControl.phase.${phase}`)} — ${t(enabled ? "voiceControl.pause" : "voiceControl.resume")}`}
         aria-pressed={enabled}
         onClick={() => void configure(!enabled)}
       >
@@ -64,11 +53,13 @@ function VoiceControl() {
       </button>
       <button
         className="voice-settings"
-        aria-label={t("voiceControl.openSettings")}
-        title={t("voiceControl.openSettings")}
-        onClick={() =>
-          void invoke("show_main_window_command").catch(reportWindowError)
-        }
+        aria-label={t("voiceControl.openWakeTalk")}
+        title={t(
+          error || windowError
+            ? "voiceControl.checkSettings"
+            : "voiceControl.openWakeTalk",
+        )}
+        onClick={() => void invoke("open_wake_talk").catch(reportWindowError)}
       >
         <Settings size={17} aria-hidden="true" />
       </button>
