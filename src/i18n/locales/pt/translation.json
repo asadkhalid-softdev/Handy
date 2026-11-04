@@ -6,7 +6,10 @@
     "conversationActive": "Codex is working. Wait for its turn to finish before clearing the conversation.",
     "clearConversation": "Clear Codex conversation",
     "resetConversationHint": "Resets the conversation shown below in the same Codex thread. Previous turns are removed and replaced with a short reset message and acknowledgement. Your files and AGENTS.md remain unchanged.",
-    "roles": { "user": "You", "assistant": "Codex" },
+    "roles": {
+      "user": "You",
+      "assistant": "Codex"
+    },
     "historyTitle": "Handy delivery log",
     "historyEmpty": "No messages in this session.",
     "clearHistory": "Clear delivery log",
@@ -374,7 +377,14 @@
   },
   "settings": {
     "modelSettings": {
-      "title": "Configurações de {{model}}"
+      "title": "Configurações de {{model}}",
+      "streamingLatency": {
+        "title": "Streaming audio latency",
+        "description": "Lower settings update text sooner and may reduce accuracy or increase processing load. Saved separately for each model; applies to the next recording. Actual delay also includes processing. Finish-after-silence is a separate setting.",
+        "default": "Model default ({{ms}} ms)",
+        "option": "{{ms}} ms",
+        "warningOption": "{{ms}} ms — reduced accuracy; not recommended"
+      }
     },
     "general": {
       "title": "Geral",

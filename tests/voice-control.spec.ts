@@ -36,6 +36,7 @@ test.beforeEach(async ({ page }) => {
     };
     const configurations: Record<string, unknown>[] = [];
     const settings = {
+      streaming_latency_ms: {} as Record<string, number>,
       app_language: "en",
       theme: "dark",
       onboarding_completed: true,
@@ -167,7 +168,50 @@ test.beforeEach(async ({ page }) => {
           if (command === "get_windows_microphone_permission_status")
             return { supported: true, overall_access: "allowed" };
           if (command === "plugin:app|version") return "0.10.0";
-          if (command === "get_current_model") return "test-english";
+          if (command === "get_current_model")
+            return Reflect.get(window, "testLatencyModel") ?? "test-english";
+          if (command === "get_available_models") {
+            const modelId = Reflect.get(window, "testLatencyModel");
+            return modelId
+              ? [
+                  {
+                    id: modelId,
+                    name: "Latency test model",
+                    supported_languages: ["en"],
+                    is_downloaded: true,
+                    supports_language_selection: false,
+                  },
+                ]
+              : [];
+          }
+          if (command === "get_streaming_latency_choices") {
+            if (!Reflect.get(window, "testLatencyModel")) return null;
+            const unified = String(args.modelId).includes("unified");
+            return {
+              default_ms: unified ? 2080 : 1120,
+              presets: (unified
+                ? [80, 160, 320, 480, 1120, 2080]
+                : [80, 160, 560, 1120]
+              ).map((latency_ms) => ({
+                latency_ms,
+                accuracy_warning: unified && latency_ms === 80,
+              })),
+            };
+          }
+          if (command === "change_streaming_latency_settings") {
+            if (Reflect.get(window, "testRejectLatency"))
+              throw "Unsupported latency";
+            settings.streaming_latency_ms = args.values as Record<
+              string,
+              number
+            >;
+            Reflect.set(
+              window,
+              "testSavedLatency",
+              structuredClone(args.values),
+            );
+            return;
+          }
           if (command === "plugin:os|locale") return "en-US";
           if (command === "configure_voice_control") {
             if (Reflect.get(window, "testRejectConfigure"))
@@ -606,3 +650,50 @@ test("Codex-Talk suspension retains listening preference across unlock", async (
     await page.evaluate(() => Reflect.get(window, "testCodexConfigurations")),
   ).toHaveLength(0);
 });
+
+for (const base of [
+  "parakeet-unified-en-0.6b",
+  "nemotron-speech-streaming-en-0.6b",
+]) {
+  test(`${base} latency saves, survives navigation and resets to default`, async ({
+    page,
+  }) => {
+    const modelId = `handy-computer/${base}-gguf/${base}-Q8_0.gguf`;
+    await page.addInitScript(
+      (id) => Reflect.set(window, "testLatencyModel", id),
+      modelId,
+    );
+    await page.goto("/");
+    await page.getByTitle("General", { exact: true }).click();
+    const defaultLabel = `Model default (${base.includes("unified") ? 2080 : 1120} ms)`;
+    await page.getByRole("button", { name: defaultLabel, exact: true }).click();
+    if (base.includes("unified")) {
+      await expect(
+        page.getByText("80 ms — reduced accuracy; not recommended", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(page.getByText("560 ms", { exact: true })).toHaveCount(0);
+    } else {
+      await expect(page.getByText("560 ms", { exact: true })).toBeVisible();
+      await expect(page.getByText("320 ms", { exact: true })).toHaveCount(0);
+    }
+    await page.getByText("160 ms", { exact: true }).click();
+    await expect
+      .poll(() => page.evaluate(() => Reflect.get(window, "testSavedLatency")))
+      .toEqual({ [modelId]: 160 });
+    await page.getByText("Wake-Talk", { exact: true }).click();
+    await page.getByTitle("General", { exact: true }).click();
+    await page.getByRole("button", { name: "160 ms", exact: true }).click();
+    await page.getByText(defaultLabel, { exact: true }).click();
+    await expect
+      .poll(() => page.evaluate(() => Reflect.get(window, "testSavedLatency")))
+      .toEqual({});
+    await page.getByRole("button", { name: defaultLabel, exact: true }).click();
+    await page.evaluate(() => Reflect.set(window, "testRejectLatency", true));
+    await page.getByText("160 ms", { exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: defaultLabel, exact: true }),
+    ).toBeVisible();
+  });
+}

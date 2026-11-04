@@ -495,6 +495,17 @@ async changeVadEnabledSetting(enabled: boolean) : Promise<Result<null, string>> 
     else return { status: "error", error: e  as any };
 }
 },
+async getStreamingLatencyChoices(modelId: string) : Promise<StreamingLatencyChoices | null> {
+    return await TAURI_INVOKE("get_streaming_latency_choices", { modelId });
+},
+async changeStreamingLatencySettings(values: Partial<{ [key in string]: number }>) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_streaming_latency_settings", { values }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async changeLongFormChunkingSetting(enabled: boolean) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("change_long_form_chunking_setting", { enabled }) };
@@ -1253,7 +1264,11 @@ vad_backend?: VadBackend;
  * degrades on long audio. Independent of `vad_enabled`, which only
  * decides whether silence is dropped from recordings.
  */
-long_form_chunking?: boolean; language_detection?: LanguageDetectionMode; 
+long_form_chunking?: boolean;
+/**
+ * Per-model streaming latency; absence preserves the engine default.
+ */
+streaming_latency_ms?: Partial<{ [key in string]: number }>; language_detection?: LanguageDetectionMode;
 /**
  * Seconds of speech the language detector hears (debug). Read through
  * [`AppSettings::language_detection_window_samples`], which clamps it.
@@ -1598,6 +1613,8 @@ export type StreamTextEvent = { committed: string; tentative: string }
  * Semantic kind of "working" phase, used to localize the spinner label.
  */
 export type StreamWorkKind = "transcribing" | "polishing"
+export type StreamingLatencyChoices = { default_ms: number; presets: StreamingLatencyPreset[] }
+export type StreamingLatencyPreset = { latency_ms: number; accuracy_warning: boolean }
 /**
  * UI appearance mode. `System` follows the OS `prefers-color-scheme`; `Light`
  * and `Dark` force one of the two palettes Handy already ships.

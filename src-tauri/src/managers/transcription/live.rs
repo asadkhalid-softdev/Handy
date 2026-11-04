@@ -5,7 +5,6 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use log::{debug, error, info};
-use transcribe_cpp::StreamOptions;
 
 use super::chunked::{ChunkSetup, ChunkedDecode, PendingSetup};
 use super::policy::LiveDecode;
@@ -187,11 +186,11 @@ impl<'a> StreamSession<'a> {
         // Run the stream in the engine's worker process. Feeds are queued
         // without waiting; a crashed or hung worker makes finalize report no
         // result, and the caller falls back to batch transcription.
-        // StreamOptions::default() uses CommitPolicy::Auto and lets the
-        // family pick its own streaming strategy (no family-specific ext).
+        // Preserve automatic commit policy; only override a verified model
+        // family operating point when the user selected one.
         let stream = match tm.engine.start_stream(
             setup.run_options.clone(),
-            StreamOptions::default(),
+            crate::streaming_latency::stream_options(model_id, settings),
             on_progress,
         ) {
             Ok(stream) => stream,

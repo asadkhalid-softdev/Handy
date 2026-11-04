@@ -188,6 +188,10 @@ const settingUpdaters: {
   },
   overlay_style: (value) => commands.changeOverlayStyleSetting(value as string),
   vad_enabled: (value) => commands.changeVadEnabledSetting(value as boolean),
+  streaming_latency_ms: async (values) => {
+    const result = await commands.changeStreamingLatencySettings(values ?? {});
+    if (result.status === "error") throw new Error(result.error);
+  },
   long_form_chunking: (value) =>
     commands.changeLongFormChunkingSetting(value as boolean),
   vad_backend: async (value) => {

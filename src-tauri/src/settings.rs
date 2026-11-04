@@ -560,6 +560,9 @@ pub struct AppSettings {
     /// decides whether silence is dropped from recordings.
     #[serde(default = "default_long_form_chunking")]
     pub long_form_chunking: bool,
+    /// Per-model streaming latency; absence preserves the engine default.
+    #[serde(default)]
+    pub streaming_latency_ms: HashMap<String, u32>,
     #[serde(default)]
     pub language_detection: LanguageDetectionMode,
     /// Seconds of speech the language detector hears (debug). Read through
@@ -1068,6 +1071,7 @@ pub fn get_default_settings() -> AppSettings {
         vad_enabled: default_vad_enabled(),
         vad_backend: VadBackend::default(),
         long_form_chunking: default_long_form_chunking(),
+        streaming_latency_ms: HashMap::new(),
         language_detection: LanguageDetectionMode::default(),
         language_detection_window_secs: default_language_detection_window_secs(),
         overlay_style: default_overlay_style(),
