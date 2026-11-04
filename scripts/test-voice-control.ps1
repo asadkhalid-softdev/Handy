@@ -20,6 +20,11 @@ public static class HandyVoiceWindowProbe {
 $rootPath = Split-Path $PSScriptRoot -Parent
 $executable = Join-Path $rootPath 'src-tauri\target\voice-preview\Handy Voice.exe'
 if (!(Test-Path $executable)) { throw 'Build the standalone preview first.' }
+$image = [IO.File]::ReadAllBytes($executable)
+$peOffset = [BitConverter]::ToInt32($image, 0x3c)
+$subsystem = [BitConverter]::ToUInt16($image, $peOffset + 24 + 68)
+if ($subsystem -ne 2) { throw 'The packaged preview must use the Windows GUI subsystem, without a console.' }
+Write-Output 'PASS: packaged preview does not allocate a console'
 if (Get-Process -Name 'Handy Voice' -ErrorAction SilentlyContinue) {
     throw 'Quit the running preview before this test. Official Handy can remain running.'
 }

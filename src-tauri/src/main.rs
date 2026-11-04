@@ -1,5 +1,6 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Only interactive Tauri development needs a console. Packaged builds,
+// including unsigned debug previews, must not open a terminal window.
+#![cfg_attr(all(target_os = "windows", not(dev)), windows_subsystem = "windows")]
 
 use clap::Parser;
 use handy_app_lib::CliArgs;
