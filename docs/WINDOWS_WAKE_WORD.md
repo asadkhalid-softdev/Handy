@@ -149,6 +149,12 @@ thread is idle, the desktop starts the next turn in that same thread. Codex-Talk
 never selects a model. A failed delivery retains its text and original thread in
 the tab until retry or discard (in memory until Handy exits). After a timeout,
 check the thread before retrying: the desktop may already have accepted it.
+The Message history section lists up to 100 messages for this Handy session,
+including their destination and delivery status. **Clear message history** clears
+that list, retained failed text and delivery notices. It is unavailable during a
+recording or delivery. It does not clear the Codex conversation or recordings in
+Handy's History tab. The list also clears when Handy exits.
+
 Stopping listening cannot recall a message already accepted by Codex. Normal
 Handy audio history and retention still apply; the final text is sent to Codex
 for model processing.

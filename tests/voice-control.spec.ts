@@ -32,6 +32,7 @@ test.beforeEach(async ({ page }) => {
       delivery: null,
       pending_text: null,
       pending_thread: null,
+      history: [],
     };
     const configurations: Record<string, unknown>[] = [];
     const settings = {
@@ -84,6 +85,17 @@ test.beforeEach(async ({ page }) => {
               handler: Number(args.handler),
             });
             return id;
+          }
+          if (command === "clear_codex_message_history") {
+            if (Reflect.get(window, "testCodexClearError"))
+              throw "Delivery is still in progress";
+            codexStatus.history = [];
+            codexStatus.pending_text = null;
+            codexStatus.pending_thread = null;
+            codexStatus.delivery = null;
+            codexStatus.error = null;
+            emit("codex-talk-status", structuredClone(codexStatus));
+            return;
           }
           if (command === "discard_codex_message") {
             codexStatus.pending_text = null;
@@ -346,4 +358,87 @@ test("failed Codex delivery retains the transcript and original destination", as
   await expect(
     page.getByText("Please check the build", { exact: true }),
   ).toHaveCount(0);
+});
+
+test("clearing Codex-Talk history clears local messages without changing the destination", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByText("Codex-Talk", { exact: true }).click();
+  await expect(page.getByLabel("Thread ID")).toBeVisible();
+  await page.evaluate(() =>
+    Reflect.get(window, "testVoiceEmit")("codex-talk-status", {
+      settings: {
+        feature_enabled: false,
+        listening: false,
+        phrase: "hey codex",
+        shortcut: "Ctrl+Alt+Shift+Space",
+        thread_id: "01a1a777-2733-73c3-999d-c7d0e0f7cfaf",
+      },
+      phase: "disabled",
+      model: "thread-selected-model",
+      error: "Old delivery error",
+      delivery: "failed",
+      pending_text: "Retained failed message",
+      pending_thread: "original-thread",
+      history: [
+        {
+          timestamp: 1700000000000,
+          text: "Sent message",
+          thread_id: "original-thread",
+          delivery: "sent",
+        },
+      ],
+    }),
+  );
+  await expect(
+    page.getByRole("list", { name: "Message history" }),
+  ).toContainText("Sent message");
+  await page.getByRole("button", { name: "Clear message history" }).click();
+  await expect(page.getByText("No messages in this session.")).toBeVisible();
+  await expect(
+    page.getByText("Retained failed message", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByLabel("Thread ID")).toHaveValue(
+    "01a1a777-2733-73c3-999d-c7d0e0f7cfaf",
+  );
+  const calls = await page.evaluate(() =>
+    Reflect.get(window, "testVoiceCalls"),
+  );
+  expect(calls).toContain("clear_codex_message_history");
+  expect(calls).not.toContain("configure_codex_talk");
+  expect(calls).not.toContain("retry_codex_message");
+});
+
+test("Codex-Talk cannot clear a message while it is being sent", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByText("Codex-Talk", { exact: true }).click();
+  await expect(page.getByLabel("Thread ID")).toBeVisible();
+  await page.evaluate(() =>
+    Reflect.get(window, "testVoiceEmit")("codex-talk-status", {
+      settings: {
+        feature_enabled: true,
+        listening: false,
+        phrase: "hey codex",
+        shortcut: "Ctrl+Alt+Shift+Space",
+        thread_id: "01a1a777-2733-73c3-999d-c7d0e0f7cfaf",
+      },
+      phase: "processing",
+      model: "thread-selected-model",
+      error: null,
+      delivery: "sending",
+      pending_text: "In-flight message",
+      pending_thread: "original-thread",
+      history: [],
+    }),
+  );
+  await expect(
+    page.getByRole("button", { name: "Clear message history" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByText("In-flight message", { exact: true }),
+  ).toBeVisible();
 });

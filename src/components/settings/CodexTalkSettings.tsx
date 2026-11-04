@@ -12,6 +12,12 @@ interface Config {
   shortcut: string;
   thread_id: string;
 }
+interface Message {
+  timestamp: number;
+  text: string;
+  thread_id: string;
+  delivery: string;
+}
 interface Status {
   settings: Config;
   phase: string;
@@ -20,6 +26,7 @@ interface Status {
   delivery: string | null;
   pending_text: string | null;
   pending_thread: string | null;
+  history: Message[];
 }
 export function CodexTalkSettings() {
   const { t } = useTranslation();
@@ -217,6 +224,60 @@ export function CodexTalkSettings() {
           </SettingsGroup>
         </>
       )}
+      <SettingsGroup title={t("codexTalk.historyTitle")}>
+        <div className="space-y-3 p-4">
+          <p className="text-xs text-text/60">
+            {t("codexTalk.clearHistoryHint")}
+          </p>
+          <button
+            className="border border-line rounded-lg px-4 py-2 text-sm disabled:opacity-40"
+            disabled={
+              !status ||
+              busy ||
+              activeCapture ||
+              status.delivery === "sending" ||
+              (!status.history?.length &&
+                !status.delivery &&
+                !status.pending_text)
+            }
+            onClick={() => {
+              setBusy(true);
+              setError(null);
+              void invoke("clear_codex_message_history")
+                .catch((e: unknown) => setError(String(e)))
+                .finally(() => setBusy(false));
+            }}
+          >
+            {t("codexTalk.clearHistory")}
+          </button>
+          {status?.history?.length ? (
+            <ol
+              className="space-y-3 max-h-72 overflow-y-auto"
+              aria-label={t("codexTalk.historyTitle")}
+            >
+              {status.history.map((message, index) => (
+                <li
+                  key={`${message.timestamp}-${index}`}
+                  className="border border-line rounded p-3 space-y-1"
+                >
+                  <p className="text-xs text-text/60">
+                    {new Date(message.timestamp).toLocaleString()} ·{" "}
+                    {t(`codexTalk.delivery.${message.delivery}`)}
+                  </p>
+                  <p className="text-sm whitespace-pre-wrap">{message.text}</p>
+                  <p className="text-xs font-mono text-text/60">
+                    {message.thread_id}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-sm text-text/60">
+              {t("codexTalk.historyEmpty")}
+            </p>
+          )}
+        </div>
+      </SettingsGroup>
       {status?.delivery && (
         <p role="status" className="px-4 text-sm">
           {t(`codexTalk.delivery.${status.delivery}`)}

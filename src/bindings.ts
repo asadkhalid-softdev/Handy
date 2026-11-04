@@ -45,6 +45,14 @@ async discardCodexMessage() : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async clearCodexMessageHistory() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clear_codex_message_history") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async getVoiceControlStatus() : Promise<Result<VoiceStatus, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_voice_control_status") };
@@ -1276,8 +1284,9 @@ export type ChineseScript =
  */
 "traditional_hk"
 export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"
+export type CodexTalkMessage = { timestamp: number; text: string; thread_id: string; delivery: string }
 export type CodexTalkSettings = { feature_enabled: boolean; listening: boolean; phrase: string; shortcut: string; thread_id: string }
-export type CodexTalkStatus = { settings: CodexTalkSettings; phase: string; model: string | null; error: string | null; delivery: string | null; pending_text: string | null; pending_thread: string | null }
+export type CodexTalkStatus = { settings: CodexTalkSettings; phase: string; model: string | null; error: string | null; delivery: string | null; pending_text: string | null; pending_thread: string | null; history: CodexTalkMessage[] }
 export type CustomSounds = { start: boolean; stop: boolean }
 export type GpuDeviceOption = { id: string; name: string; total_vram_mb: number }
 export type HistoryEntry = { id: number; file_name: string; timestamp: number; saved: boolean; title: string; transcription_text: string; post_processed_text: string | null; post_process_prompt: string | null; post_process_requested: boolean; 

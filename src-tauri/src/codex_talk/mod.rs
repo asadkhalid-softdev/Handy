@@ -29,6 +29,14 @@ impl Default for CodexTalkSettings {
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
+pub struct CodexTalkMessage {
+    pub timestamp: i64,
+    pub text: String,
+    pub thread_id: String,
+    pub delivery: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CodexTalkStatus {
     pub settings: CodexTalkSettings,
     pub phase: String,
@@ -37,6 +45,53 @@ pub struct CodexTalkStatus {
     pub delivery: Option<String>,
     pub pending_text: Option<String>,
     pub pending_thread: Option<String>,
+    pub history: Vec<CodexTalkMessage>,
+}
+
+impl CodexTalkStatus {
+    fn begin_delivery(&mut self, thread: &str, text: &str) {
+        // Retry updates the failed message rather than duplicating its text.
+        let retry = self.pending_text.as_deref() == Some(text)
+            && self.pending_thread.as_deref() == Some(thread);
+        if let Some(last) = self.history.last_mut().filter(|entry| {
+            retry && entry.delivery == "failed" && entry.thread_id == thread && entry.text == text
+        }) {
+            last.delivery = "sending".into();
+        } else {
+            self.history.push(CodexTalkMessage {
+                timestamp: chrono::Utc::now().timestamp_millis(),
+                text: text.into(),
+                thread_id: thread.into(),
+                delivery: "sending".into(),
+            });
+            if self.history.len() > 100 {
+                self.history.remove(0);
+            }
+        }
+    }
+
+    fn finish_delivery(&mut self, delivery: &str) {
+        if let Some(last) = self.history.last_mut() {
+            last.delivery = delivery.into();
+        }
+    }
+
+    fn clear_history(&mut self) -> Result<(), String> {
+        if matches!(self.phase.as_str(), "arming" | "recording" | "processing")
+            || self.delivery.as_deref() == Some("sending")
+        {
+            return Err(
+                "Wait for the current recording or delivery to finish before clearing history."
+                    .into(),
+            );
+        }
+        self.history.clear();
+        self.pending_text = None;
+        self.pending_thread = None;
+        self.delivery = None;
+        self.error = None;
+        Ok(())
+    }
 }
 enum Message {
     Configure(CodexTalkSettings),
@@ -210,6 +265,7 @@ pub async fn deliver(app: &AppHandle, thread: &str, text: &str, cancel_generatio
         return;
     }
     update(app, |s| {
+        s.begin_delivery(thread, text);
         s.pending_text = Some(text.into());
         s.pending_thread = Some(thread.into());
         s.delivery = Some("sending".into());
@@ -237,18 +293,21 @@ pub async fn deliver(app: &AppHandle, thread: &str, text: &str, cancel_generatio
         Ok(delivery) => {
             crate::notices::clear(app, crate::notices::NoticeSource::CodexTalk);
             update(app, |s| {
+                s.finish_delivery(delivery);
                 s.delivery = Some(delivery.into());
                 s.pending_text = None;
                 s.pending_thread = None;
             });
         }
         Err(error) if error == "Recording cancelled" => update(app, |s| {
+            s.history.pop();
             s.delivery = None;
             s.pending_text = None;
             s.pending_thread = None;
         }),
         Err(error) => {
             update(app, |s| {
+                s.finish_delivery("failed");
                 s.delivery = Some("failed".into());
                 s.error = Some(error.clone());
             });
@@ -297,6 +356,19 @@ pub fn discard_codex_message(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+#[specta::specta]
+pub fn clear_codex_message_history(app: AppHandle) -> Result<(), String> {
+    let control = app.state::<CodexTalk>();
+    {
+        let mut status = control.status.lock().map_err(|e| e.to_string())?;
+        status.clear_history()?;
+        let _ = app.emit("codex-talk-status", status.clone());
+    }
+    crate::notices::clear(&app, crate::notices::NoticeSource::CodexTalk);
+    Ok(())
+}
+
 fn report(app: &AppHandle, error: &str) {
     use crate::notices::{self, Notice, NoticeCode, NoticeSource};
     notices::raise_without_overlay(
@@ -319,6 +391,7 @@ pub fn initialize(app: &AppHandle) {
             delivery: None,
             pending_text: None,
             pending_thread: None,
+            history: Vec::new(),
         })),
     });
     let ready = tx.clone();
@@ -571,6 +644,73 @@ fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn history_status() -> CodexTalkStatus {
+        CodexTalkStatus {
+            settings: CodexTalkSettings::default(),
+            phase: "paused".into(),
+            model: Some("thread-model".into()),
+            error: Some("old error".into()),
+            delivery: Some("failed".into()),
+            pending_text: Some("retained".into()),
+            pending_thread: Some("original-thread".into()),
+            history: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn clearing_history_removes_local_messages_and_keeps_configuration() {
+        let mut status = history_status();
+        status.begin_delivery("original-thread", "retained");
+        status.finish_delivery("failed");
+        let settings = serde_json::to_value(&status.settings).unwrap();
+        status.clear_history().unwrap();
+        assert!(status.history.is_empty());
+        assert!(status.pending_text.is_none());
+        assert!(status.pending_thread.is_none());
+        assert!(status.delivery.is_none());
+        assert!(status.error.is_none());
+        assert_eq!(serde_json::to_value(&status.settings).unwrap(), settings);
+        assert_eq!(status.model.as_deref(), Some("thread-model"));
+        assert_eq!(status.phase, "paused");
+    }
+
+    #[test]
+    fn clearing_cannot_erase_an_active_recording_or_delivery() {
+        for (phase, delivery) in [
+            ("arming", None),
+            ("recording", None),
+            ("processing", None),
+            ("paused", Some("sending")),
+        ] {
+            let mut status = history_status();
+            status.begin_delivery("target", "message");
+            status.phase = phase.into();
+            status.delivery = delivery.map(str::to_owned);
+            assert!(status.clear_history().is_err());
+            assert_eq!(status.history.len(), 1);
+            assert_eq!(status.pending_text.as_deref(), Some("retained"));
+        }
+    }
+
+    #[test]
+    fn message_history_is_bounded_and_retry_updates_the_failed_message() {
+        let mut status = history_status();
+        for i in 0..105 {
+            status.begin_delivery("target", &format!("message {i}"));
+            status.finish_delivery("sent");
+        }
+        assert_eq!(status.history.len(), 100);
+        assert_eq!(status.history[0].text, "message 5");
+        status.finish_delivery("failed");
+        status.pending_text = Some("message 104".into());
+        status.pending_thread = Some("target".into());
+        status.begin_delivery("target", "message 104");
+        assert_eq!(status.history.len(), 100);
+        assert_eq!(status.history.last().unwrap().delivery, "sending");
+        status.finish_delivery("steered");
+        assert_eq!(status.history.last().unwrap().delivery, "steered");
+    }
+
     #[test]
     fn routes_require_distinct_phrases_and_shortcuts() {
         let settings = crate::settings::get_default_settings();

@@ -1,5 +1,9 @@
 {
   "codexTalk": {
+    "historyTitle": "Message history",
+    "historyEmpty": "No messages in this session.",
+    "clearHistory": "Clear message history",
+    "clearHistoryHint": "Clears this tab’s message list and retained failed messages. Your Codex conversation and recordings in History remain unchanged. The list keeps up to 100 messages until Handy exits.",
     "recheck": "Check again",
     "discard": "Discard retained message",
     "phase": {
