@@ -223,7 +223,11 @@ pub fn show_voice_control(app: AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("voice_control")
         .ok_or("Voice control is available on Windows only")?;
-    window.show().map_err(|e| e.to_string())
+    window.unminimize().map_err(|e| e.to_string())?;
+    window.show().map_err(|e| e.to_string())?;
+    #[cfg(target_os = "windows")]
+    maintain_topmost(&window);
+    Ok(())
 }
 
 #[tauri::command]
@@ -360,6 +364,7 @@ fn run(
     let mut helper_started = Instant::now();
     let mut pending_position: Option<(i32, i32, Instant)> = None;
     let mut cooldown = Instant::now();
+    let mut last_visibility_check = Instant::now();
     let _ = tx.send(Message::Configure(initial));
     loop {
         let message = match rx.recv_timeout(Duration::from_millis(100)) {
@@ -488,6 +493,14 @@ fn run(
             Some(Message::Position(x, y)) => pending_position = Some((x, y, Instant::now())),
             _ => {}
         }
+        if last_visibility_check.elapsed() >= Duration::from_secs(1) {
+            if config.feature_enabled {
+                if let Some(window) = app.get_webview_window("voice_control") {
+                    maintain_topmost(&window);
+                }
+            }
+            last_visibility_check = Instant::now();
+        }
         if let Some((x, y, moved)) = pending_position {
             if moved.elapsed() >= Duration::from_millis(500) {
                 let mut settings = crate::settings::get_settings(&app);
@@ -535,6 +548,53 @@ fn run(
     drop(detector);
 }
 
+/// Another topmost app can cover the controls. Restore their stacking order
+/// only when a button is covered, without activating or showing hidden windows.
+#[cfg(target_os = "windows")]
+fn maintain_topmost(window: &tauri::WebviewWindow) {
+    use windows::Win32::Foundation::{POINT, RECT};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetAncestor, GetWindowRect, IsIconic, IsWindowVisible, SetWindowPos, WindowFromPoint,
+        GA_ROOT, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    };
+
+    let window = window.clone();
+    let _ = window.clone().run_on_main_thread(move || {
+        let Ok(hwnd) = window.hwnd() else { return };
+        // SAFETY: hwnd belongs to this live Tauri window; these calls only
+        // inspect its bounds and change its stacking order on the UI thread.
+        unsafe {
+            if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() {
+                return;
+            }
+            let mut bounds = RECT::default();
+            if GetWindowRect(hwnd, &mut bounds).is_err() {
+                return;
+            }
+            let covered = [1, 2, 3].into_iter().any(|part| {
+                let hit = WindowFromPoint(POINT {
+                    x: bounds.left + (bounds.right - bounds.left) * part / 4,
+                    y: bounds.top + (bounds.bottom - bounds.top) / 2,
+                });
+                !hit.is_invalid() && GetAncestor(hit, GA_ROOT) != hwnd
+            });
+            if covered {
+                if let Err(error) = SetWindowPos(
+                    hwnd,
+                    Some(HWND_TOPMOST),
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+                ) {
+                    log::debug!("Could not restore floating control stacking order: {error}");
+                }
+            }
+        }
+    });
+}
+
 #[cfg(target_os = "windows")]
 fn create_window(app: &AppHandle, settings: &VoiceControlSettings) -> Result<(), String> {
     let window = tauri::WebviewWindowBuilder::new(
@@ -545,6 +605,8 @@ fn create_window(app: &AppHandle, settings: &VoiceControlSettings) -> Result<(),
     .title("Handy Voice Control")
     .inner_size(128.0, 58.0)
     .decorations(false)
+    // Native shadows add a second rounded frame around transparent windows.
+    .shadow(false)
     .transparent(true)
     .resizable(false)
     .always_on_top(true)
