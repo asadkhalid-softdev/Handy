@@ -141,6 +141,15 @@ pub fn pipeline_finished(app: &AppHandle, token: u64) {
         let _ = control.tx.send(Message::Finished(token));
     }
 }
+pub fn microphone_changed(app: &AppHandle) {
+    let config = crate::settings::get_settings(app).codex_talk;
+    if config.feature_enabled && config.listening {
+        if let Some(control) = app.try_state::<CodexTalk>() {
+            let _ = control.tx.send(Message::Configure(config));
+        }
+    }
+}
+
 pub fn shutdown(app: &AppHandle) {
     if let Some(control) = app.try_state::<CodexTalk>() {
         let _ = control.tx.send(Message::Shutdown);
@@ -549,8 +558,12 @@ fn run(
                         .map_err(|e| e.to_string())?;
                     registered = Some(key);
                     if config.listening {
-                        detector =
-                            Some(spawn_detector(&config.phrase, generation, wake_tx.clone())?);
+                        detector = Some(spawn_detector(
+                            &app,
+                            &config.phrase,
+                            generation,
+                            wake_tx.clone(),
+                        )?);
                         detector_started = Instant::now();
                         update(&app, |s| s.phase = "starting".into());
                     }

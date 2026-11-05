@@ -245,6 +245,10 @@ pub async fn set_selected_microphone(app: AppHandle, device_name: String) -> Res
     };
     write_settings(&app, settings);
 
+    // Wake capture owns separate input streams; move those too so selecting a
+    // laptop mic cannot leave a Bluetooth headset in hands-free mode.
+    crate::voice_control::microphone_changed(&app);
+
     // Update the audio manager to use the new device. update_selected_device
     // can restart the cpal stream (blocking CoreAudio) — run it on a blocking
     // thread, not inline on the webview/main run loop.

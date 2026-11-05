@@ -1053,7 +1053,7 @@
   "voiceControl": {
     "silenceSecondsHint": "Seconds, from 0.1 to 10. Use at most one decimal place.",
     "title": "Wake-Talk",
-    "description": "Start dictation hands-free with a wake word or phrase. Listening uses your default Windows microphone and runs locally.",
+    "description": "Start dictation hands-free with a wake word or phrase. Listening uses the microphone selected in General → Sound → Microphone and runs locally.",
     "instructions": "Say the wake phrase, wait for the pink recording indicator, then dictate. Silence ends the recording and pastes the result.",
     "enable": "Listen for wake phrase",
     "wakePhrase": "Wake word or phrase",

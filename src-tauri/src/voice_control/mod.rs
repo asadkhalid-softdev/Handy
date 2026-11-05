@@ -1,6 +1,6 @@
 //! Windows wake-phrase dictation and its persistent floating control.
 //!
-//! The OS recognizer spots only the wake phrase on the default Windows mic.
+//! The OS recognizer spots only the wake phrase on the microphone selected in Handy.
 //! Handy's existing recorder/model owns transcription. Pause kills the detector
 //! and cancels this controller's session, including an in-flight paste.
 pub(crate) mod endpoint;
@@ -122,6 +122,17 @@ pub fn pipeline_finished(app: &AppHandle, token: Option<u64>) {
     if let Some(control) = app.try_state::<VoiceControl>() {
         let _ = control.tx.send(Message::Finished(token));
     }
+}
+
+/// Restart active wake capture after the user changes the microphone.
+pub fn microphone_changed(app: &AppHandle) {
+    let config = crate::settings::get_settings(app).voice_control;
+    if config.listening_enabled() {
+        if let Some(control) = app.try_state::<VoiceControl>() {
+            let _ = control.tx.send(Message::Configure(config));
+        }
+    }
+    crate::codex_talk::microphone_changed(app);
 }
 
 pub fn shutdown(app: &AppHandle) {
@@ -271,6 +282,7 @@ impl Drop for Detector {
 
 #[cfg(target_os = "windows")]
 pub(crate) fn spawn_detector(
+    app: &AppHandle,
     phrase: &str,
     generation: u64,
     tx: mpsc::Sender<Message>,
@@ -289,6 +301,12 @@ pub(crate) fn spawn_detector(
             include_str!("detector.ps1"),
         ])
         .env("HANDY_WAKE_PHRASE", phrase)
+        .env(
+            "HANDY_WAKE_MICROPHONE",
+            crate::settings::get_settings(app)
+                .selected_microphone
+                .unwrap_or_default(),
+        )
         .env("HANDY_WAKE_PARENT", std::process::id().to_string())
         .env_remove("HANDY_WAKE_TEST_WAV")
         .env_remove("HANDY_WAKE_TEST_SESSION_STEPS")
@@ -303,6 +321,10 @@ pub(crate) fn spawn_detector(
         let output = tx.clone();
         std::thread::spawn(move || {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                if let Some(device) = line.strip_prefix("input:") {
+                    log::info!("Wake detector using selected microphone: {}", device);
+                    continue;
+                }
                 if output.send(Message::Detector(generation, line)).is_err() {
                     break;
                 }
@@ -396,7 +418,7 @@ fn run(
                 phase = "starting";
                 app.state::<VoiceControl>().publish(&app, phase, true);
                 helper_started = Instant::now();
-                match spawn_detector(&config.phrase, generation, tx.clone()) {
+                match spawn_detector(&app, &config.phrase, generation, tx.clone()) {
                     Ok(child) => detector = Some(child),
                     Err(error) => {
                         let _ = tx.send(Message::DetectorError(generation, error));
@@ -476,7 +498,7 @@ fn run(
         }
         if let Some(child) = detector.as_mut() {
             if !matches!(child.0.try_wait(), Ok(None)) {
-                let _ = tx.send(Message::DetectorError(generation, "The Windows wake detector stopped. Check the default microphone and English speech installation, then resume.".into()));
+                let _ = tx.send(Message::DetectorError(generation, "The Windows wake detector stopped. Check the selected microphone and English speech installation, then resume.".into()));
             } else if phase == "starting" && helper_started.elapsed() > Duration::from_secs(20) {
                 let _ = tx.send(Message::DetectorError(
                     generation,
